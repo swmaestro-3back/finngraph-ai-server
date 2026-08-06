@@ -10,11 +10,8 @@ from core import neo4j_database
 
 logger = logging.getLogger(__name__)
 
-# seed.json 은 이 파일과 같은 디렉토리에 둔다.
 _SEED_FILE = Path(__file__).with_name("seed.json")
 
-# docs/neo4j-schema.md 의 Key(유니크 제약) 컬럼과 1:1로 대응한다.
-# 라벨/속성명을 f-string 으로 넣지만 전부 코드 내 상수(신뢰 가능한 값)이므로 안전하다.
 _CONSTRAINTS: list[tuple[str, str, str]] = [
     # (제약명, 라벨, 유니크 속성)
     ("stock_ticker_unique", "Stock", "ticker"),
@@ -24,17 +21,13 @@ _CONSTRAINTS: list[tuple[str, str, str]] = [
     ("theme_name_unique", "Theme", "name"),
 ]
 
-# Neo4j Date 타입으로 저장해야 하는 속성. ISO 문자열 -> datetime.date 로 변환하면
-# neo4j 드라이버가 자동으로 Date 로 직렬화한다.
 _DATE_SCALAR_FIELDS = frozenset({"first_mentioned_at", "last_mentioned_at", "created_at"})
 _DATE_LIST_FIELDS = frozenset({"mentioned_ats"})
 
 
 async def create_constraints() -> None:
-    """노드 유니크 제약을 먼저 건다. 시드 이전에 반드시 호출한다.
-
-    Neo4j 에는 PK 개념이 없어 유니크 제약으로 PK처럼 동작할 필드를 지정한다.
-    제약을 걸면 B-Tree 인덱스도 자동 생성되어 MERGE 조회가 빨라진다.
+    """
+    CONSTRAINTS 생성
     """
     for name, label, prop in _CONSTRAINTS:
         query = (
@@ -86,8 +79,24 @@ async def _upsert_relationship(rel: dict[str, Any]) -> None:
     )
 
 
+async def _has_existing_data() -> bool:
+    """DB 에 노드가 하나라도 있으면 True. 이미 시드된 DB 로 판단해 재적재를 건너뛴다."""
+    records = await neo4j_database.execute("MATCH (n) RETURN count(n) AS c")
+    node_count = records[0]["c"]
+    if node_count > 0:
+        logger.info("Skip seeding: %d node(s) already exist", node_count)
+        return True
+    return False
+
+
 async def seed() -> None:
-    """제약 생성 -> 노드 upsert -> 관계 upsert 순으로 시드를 적재한다."""
+    """CREAT CONSTRAINTS -> NODE UPSERT -> RELATIONSHIP UPSERT 순으로 시드를 적재
+    """
+
+    # 이미 데이터가 하나라도 존재한다면 seed 과정 스킵
+    if await _has_existing_data():
+        return
+
     await create_constraints()
 
     data = json.loads(_SEED_FILE.read_text(encoding="utf-8"))
