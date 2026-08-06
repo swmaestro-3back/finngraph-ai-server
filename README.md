@@ -23,6 +23,35 @@ source news and sentences) are fetched lazily per relationship.
 | `GET /commodity/{name}` | Subgraph centered on a commodity |
 | `GET /relationship/{element_id}` | Full detail (provenance) of a single relationship |
 
+## Directory Structure
+
+```
+finngraph-ai-server/
+├── app/
+│   ├── main.py               # FastAPI app entrypoint (lifespan, router mounting)
+│   ├── crud.py               # Neo4j query functions (subgraph / relationship lookups)
+│   ├── models.py             # Graph domain enums (NodeLabel, RelationshipType)
+│   ├── schemas.py            # Pydantic response schemas (GraphResponse, ...)
+│   ├── api/
+│   │   ├── main.py           # Aggregates all route routers into api_router
+│   │   └── routes/           # Endpoint handlers
+│   │       ├── stock.py
+│   │       ├── theme.py
+│   │       ├── product.py
+│   │       ├── commodity.py
+│   │       └── relationship.py
+│   ├── core/
+│   │   ├── config.py         # Settings loaded from .env (pydantic-settings)
+│   │   ├── db.py             # Neo4j async driver (singleton)
+│   │   └── logger.py         # Logging setup
+│   └── scripts/
+│       └── seed.py           # Seed data for Neo4j
+├── Dockerfile                # API image build
+├── docker-compose.yml        # api + neo4j services
+├── pyproject.toml            # Project metadata & dependencies (uv)
+└── .env.example              # Environment variable template
+```
+
 ## Environment Variables
 
 Copy `.env.example` to `.env` and fill in the values.
@@ -83,33 +112,4 @@ docker compose down -v
 
 ```bash
 uv run pytest
-```
-
-## Directory Structure
-
-```
-finngraph-ai-server/
-├── app/
-│   ├── main.py               # FastAPI app entrypoint (lifespan, router mounting)
-│   ├── crud.py               # Neo4j query functions (subgraph / relationship lookups)
-│   ├── models.py             # Graph domain enums (NodeLabel, RelationshipType)
-│   ├── schemas.py            # Pydantic response schemas (GraphResponse, ...)
-│   ├── api/
-│   │   ├── main.py           # Aggregates all route routers into api_router
-│   │   └── routes/           # Endpoint handlers
-│   │       ├── stock.py
-│   │       ├── theme.py
-│   │       ├── product.py
-│   │       ├── commodity.py
-│   │       └── relationship.py
-│   ├── core/
-│   │   ├── config.py         # Settings loaded from .env (pydantic-settings)
-│   │   ├── db.py             # Neo4j async driver (singleton)
-│   │   └── logger.py         # Logging setup
-│   └── scripts/
-│       └── seed.py           # Seed data for Neo4j
-├── Dockerfile                # API image build
-├── docker-compose.yml        # api + neo4j services
-├── pyproject.toml            # Project metadata & dependencies (uv)
-└── .env.example              # Environment variable template
 ```
