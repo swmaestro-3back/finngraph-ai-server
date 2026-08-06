@@ -4,8 +4,28 @@ __pycache__/
 .git
 .gitignore
 .env
+.env.example
 logs/
 docs/
+data/
 tests/
 *.md
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build / runtime meta (not needed in image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+.python-version
+
+# macOS
+.DS_Store
+
+# Claude
 .claude

@@ -21,5 +21,19 @@ docs/
 # Data
 data/
 
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
 # Claude
 .claude
