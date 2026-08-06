@@ -1,4 +1,4 @@
-# finngraph-ai-server
+# finngraph-kg-api
 
 REST API Server for financial knowledge graph which is created by triplet extraction pipeline in `finngraph-etl` repository.
 
@@ -6,7 +6,7 @@ Supports only `GET` methods - used exclusively in the knowledge graph explorer.
 
 ## Project Overview
 
-Finngraph AI Server exposes a **financial knowledge graph** stored in Neo4j over a REST API.
+Finngraph KG API exposes a **financial knowledge graph** stored in Neo4j over a REST API.
 
 The graph connects entities such as stocks (KOSPI / KOSDAQ / NYSE / NASDAQ), themes, commodities, products and countries through relationships like supply chains, exports, acquisitions,
 investments, and competition.
@@ -28,7 +28,7 @@ source news and sentences) are fetched lazily per relationship.
 ## Directory Structure
 
 ```
-finngraph-ai-server/
+finngraph-kg-api/
 ├── app/
 │   ├── main.py               # FastAPI app entrypoint (lifespan, router mounting)
 │   ├── crud.py               # Neo4j query functions (subgraph / relationship lookups)
