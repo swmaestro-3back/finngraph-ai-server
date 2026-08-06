@@ -1,0 +1,58 @@
+name: finngraph-ai-server
+
+services:
+  # 내 FastAPI 어플리케이션
+  api:
+    # Dockerfile 이 루트에 있으므로 dockerfile 경로 지정 없이 context 만으로 충분하다.
+    # (context 는 COPY 등의 기준 폴더. Docker 는 기본으로 이 폴더의 ./Dockerfile 을 읽는다)
+    build: .
+    image: finngraph-ai-server
+    ports:
+      # port mapping
+      - "8000:8000"
+    env_file:
+      # .env를 컨테이너 환경변수로 주입
+      - .env
+    environment:
+      # 컨테이너에서는 파일 로그를 남기지 않고 stdout으로만 출력한다.
+      - LOG_TO_FILE=false
+      # 콘솔 로그 레벨. 운영 중 임시 디버깅이 필요하면 DEBUG로 올린다.
+      - LOG_LEVEL=INFO
+      # .env 의 NEO4J_URI(bolt://localhost:7687)는 로컬 실행용이라 컨테이너 안에선 안 된다.
+      # 컨테이너 입장에서 localhost는 자기 자신이므로, 같은 네트워크의 서비스명(neo4j)으로 접속한다.
+      - NEO4J_URI=bolt://neo4j:7687
+    depends_on:
+      # neo4j가 healthcheck를 통과한 뒤에 api 서비스를 띄운다.
+      neo4j:
+        condition: service_healthy
+    # 로그는 Docker의 json-file 드라이버가 수집·로테이션한다.
+    #   docker compose logs -f api  로 조회
+    #   max-size 초과 시 회전, 최대 max-file 개 보관 (총 ~30MB)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # 컨테이너가 죽으면 자동 재시작. 단, 수동으로 stop 한 경우엔 재시작하지 않는다.
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: "${NEO4J_USERNAME:?NEO4J_USERNAME 을 .env 에 설정하세요}/${NEO4J_PASSWORD:?NEO4J_PASSWORD 를 .env 에 설정하세요}"
+      NEO4J_initial_dbms_default__database: "${NEO4J_DATABASE:?NEO4J_DATABASE 를 .env 에 설정하세요}"
+    ports:
+      # port mapping
+      - "7474:7474" # HTTP Neo4j Browser (http://localhost:7474)
+      - "7687:7687" # Bolt Driver (app.core.db)
+    volumes:
+      - neo4j_data:/data # 그래프 데이터를 명명 볼륨에 저장(컨테이너 삭제돼도 보존)
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u ${NEO4J_USERNAME:?} -p ${NEO4J_PASSWORD:?} 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  neo4j_data:
