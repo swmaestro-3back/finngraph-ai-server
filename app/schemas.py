@@ -1,12 +1,33 @@
 """
-API 응답 스키마(Pydantic). 모든 조회 엔드포인트는 GraphResponse 하나로 통일한다.
+Pydantic 기반 Type-Safe API Response Schema
+모든 조회 엔드포인트는 GraphResponse 하나로 통일한다.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from neo4j import Record
+from neo4j.graph import Node, Path, Relationship
 from pydantic import BaseModel, Field
+
+
+def _to_jsonable(value: Any) -> Any:
+    """
+    neo4j 임시(date/datetime 등) 타입을 ISO 문자열로 변환.
+    나머지는 그대로.
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _to_jsonable(v) for k, v in value.items()}
+    # neo4j.time.Date / DateTime / Time 등은 iso_format()을 가진다.
+    iso = getattr(value, "iso_format", None)
+    if callable(iso):
+        return iso()
+    return str(value)
 
 
 class GraphNode(BaseModel):
@@ -17,6 +38,14 @@ class GraphNode(BaseModel):
     labels: list[str] = Field(description="해당 노드에 붙은 모든 라벨")
     properties: dict[str, Any] = Field(default_factory=dict)
 
+    @classmethod
+    def from_neo4j(cls, node: Node) -> GraphNode:
+        return cls(
+            id=node.element_id,
+            labels=list(node.labels),
+            properties={k: _to_jsonable(v) for k, v in dict(node).items()},
+        )
+
 
 class GraphRelationship(BaseModel):
     """서브그래프에 실리는 '가벼운' 간선. 위상 + 렌더/필터용 스칼라만.
@@ -26,16 +55,49 @@ class GraphRelationship(BaseModel):
     """
 
     id: str = Field(description="Neo4j element_id. 상세 조회 키.")
-    type: str = Field(description="관계 타입 (예: SUPPLIES_TO)")
-    start: str = Field(description="시작 노드 id (방향: start -> end)")
+    type: str = Field(description="관계 타입")
+    start: str = Field(description="시작 노드 id")
     end: str = Field(description="끝 노드 id")
-    mention_count: int | None = Field(default=None, description="관측 뉴스 수. 간선 굵기/신뢰도 필터용.")
+    mention_count: int | None = Field(default=None, description="언급된 뉴스 개수")
+
+    @classmethod
+    def from_neo4j(cls, rel: Relationship) -> GraphRelationship:
+        return cls(
+            id=rel.element_id,
+            type=rel.type,
+            start=rel.start_node.element_id,
+            end=rel.end_node.element_id,
+            mention_count=rel.get("mention_count"),
+        )
 
 
 class GraphResponse(BaseModel):
     center: str = Field(description="조회 기준 노드의 element_id")
     nodes: list[GraphNode] = Field(default_factory=list)
     relationships: list[GraphRelationship] = Field(default_factory=list)
+
+    @classmethod
+    def from_record(cls, record: Record) -> GraphResponse:
+        """center 노드 + collect(path) 결과를 element_id로 dedup 병합한다."""
+        center: Node = record["center"]
+        paths: list[Path] = record["paths"]
+
+        nodes: dict[str, GraphNode] = {center.element_id: GraphNode.from_neo4j(center)}
+        rels: dict[str, GraphRelationship] = {}
+
+        for path in paths:
+            if path is None:  # 이웃이 없으면 OPTIONAL MATCH가 null path를 담는다.
+                continue
+            for n in path.nodes:
+                nodes.setdefault(n.element_id, GraphNode.from_neo4j(n))
+            for r in path.relationships:
+                rels.setdefault(r.element_id, GraphRelationship.from_neo4j(r))
+
+        return cls(
+            center=center.element_id,
+            nodes=list(nodes.values()),
+            relationships=list(rels.values()),
+        )
 
 
 class RelationshipDetail(BaseModel):
@@ -51,3 +113,18 @@ class RelationshipDetail(BaseModel):
     mention_count: int | None = None
     first_mentioned_at: str | None = None
     last_mentioned_at: str | None = None
+
+    @classmethod
+    def from_neo4j(cls, rel: Relationship) -> RelationshipDetail:
+        return cls(
+            id=rel.element_id,
+            type=rel.type,
+            start=rel.start_node.element_id,
+            end=rel.end_node.element_id,
+            news_ids=list(rel.get("news_ids") or []),
+            source_sentences=list(rel.get("source_sentences") or []),
+            mentioned_ats=_to_jsonable(rel.get("mentioned_ats") or []),
+            mention_count=rel.get("mention_count"),
+            first_mentioned_at=_to_jsonable(rel.get("first_mentioned_at")),
+            last_mentioned_at=_to_jsonable(rel.get("last_mentioned_at")),
+        )
