@@ -39,7 +39,9 @@ def test_merge_takes_max_shared_and_unions_with_caps():
 
 
 def test_kid_order_is_shared_desc_then_ticker_and_caps_at_60():
-    rows = [("앵커", [_row(f"경쟁{i}", f"{i:06d}", shared=(i % 5) + 1)
+    # Fixture: tickers in reverse order within each shared_themes group
+    # to ensure tie-break sorting is actually tested
+    rows = [("앵커", [_row(f"경쟁{i}", f"{(RIVAL_POOL_CAP + 20 - i):06d}", shared=(i % 5) + 1)
                       for i in range(RIVAL_POOL_CAP + 20)])]
     rivals = truncate_and_assign_kids(merge_rival_rows(rows))
     assert len(rivals) == RIVAL_POOL_CAP
