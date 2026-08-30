@@ -1,7 +1,7 @@
 """악재 트랙 — expand_rivals(Cypher, LLM 없음) / filter_rivals(LLM#2)는 Task 10.
 
-probe(앵커 × 핵심 테마)마다 테마 겹침 경쟁사를 모아 티커 기준으로 병합하고,
-앵커 밸류체인·지분 관계 1-hop 이웃을 구조적으로 배제한다(스펙 §4.4).
+probe(루트 기업 × 핵심 테마)마다 테마 겹침 경쟁사를 모아 티커 기준으로 병합하고,
+루트 기업 밸류체인·지분 관계 1-hop 이웃을 구조적으로 배제한다(스펙 §4.4).
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def merge_rival_rows(rows_by_probe: list[tuple[str, list[dict]]]) -> list[RivalC
     """probe 간 티커 병합 — shared_themes 는 최대값, 합집합은 상한 적용.
 
     같은 기업이 여러 probe 에서 나오면 1건으로: 최대 shared 를 준 probe 의
-    앵커가 subject_name 이 된다. kid 는 병합·절단 후에 부여한다.
+    루트 기업가 subject_name 이 된다. kid 는 병합·절단 후에 부여한다.
     """
 
     by_ticker: dict[str, RivalCandidate] = {}
@@ -98,15 +98,15 @@ async def expand_rivals(state: GraphState) -> dict:
 
 
 async def _expand_rivals(state: GraphState) -> dict:
-    anchors = state["anchors"]
+    root_companies = state["root_companies"]
     plan = state["plan"]
-    exclude_names, exclude_tickers = derive_exclusions(anchors, state["relation_lines"])
+    exclude_names, exclude_tickers = derive_exclusions(root_companies, state["relation_lines"])
 
     # 전 subject 의 3개 관계 타입 양방향 1-hop 이웃 — 자회사·밸류체인 배제.
     # 전역 합집합인 이유: 같은 악재 뉴스의 다른 당사자 밸류체인도 동반 피해
     # 가능성이 있어 보수적으로 제외한다(스펙 §4.4 명시적 결정).
     neighbor_names = await repository.fetch_neighbor_names(
-        sorted({anchor.name for anchor in anchors})
+        sorted({root.name for root in root_companies})
     )
     exclude_names |= neighbor_names
 

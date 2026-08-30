@@ -7,8 +7,8 @@ from beneficiary.nodes.select import select_rival_candidates, select_supply_cand
 
 
 def _edge(gid, ticker, market, relevance, dc=1, nc=0, cap=100, items=("HBM",), name=None):
-    return SupplyChainCandidate(gid=gid, anchor_name="앵커", subject_name=name or f"공급{ticker}",
-                         object_name="앵커", ticker=ticker, name=name or f"공급{ticker}",
+    return SupplyChainCandidate(gid=gid, root_name="루트 기업", subject_name=name or f"공급{ticker}",
+                         object_name="루트 기업", ticker=ticker, name=name or f"공급{ticker}",
                          company_id=1, market=market, market_cap=cap,
                          disclosure_items=list(items), news_items=[],
                          disclosure_count=dc, news_mention_count=nc, relevance=relevance)
@@ -27,7 +27,7 @@ def test_folds_edges_per_company_and_merges_items():
     assert [e.gid for e in c.source_edges] == ["g01", "g02"]  # gid 오름차순, weak 제외
     assert c.matched_items == ["HBM", "TC본더"]
     assert c.relevance == "strong" and c.promoted is False
-    assert c.relation_lines == ["공급000001 →공급→ 앵커"]
+    assert c.relation_lines == ["공급000001 →공급→ 루트 기업"]
 
 
 def test_ranking_strong_count_then_countsum_then_cap_then_ticker():
@@ -73,7 +73,7 @@ def test_market_zero_still_proceeds():
 
 def test_rival_selection_orders_by_shared_then_cap_then_ticker():
     def rival(kid, ticker, market, relevance, shared=1, cap=100):
-        return RivalCandidate(kid=kid, subject_name="앵커", ticker=ticker, name=kid,
+        return RivalCandidate(kid=kid, subject_name="루트 기업", ticker=ticker, name=kid,
                               company_id=1, market=market, market_cap=cap,
                               shared_themes=shared, via_themes=["테마A"],
                               supplied_items=["HBM2"], relevance=relevance)

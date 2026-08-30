@@ -1,9 +1,9 @@
 """beneficiary 데이터 계층 — 신규 쿼리(PG·Neo4j)·v1 이관 쿼리·응답 캐시.
 
-v1(삭제됨)의 읽기 쿼리 5개(fetch_anchors, fetch_market_info,
+v1(삭제됨)의 읽기 쿼리 5개(fetch_root_companies, fetch_market_info,
 fetch_edge_evidence, fetch_financial_history, fetch_latest_valuation)는 이
-모듈로 이관했다 — fetch_anchors 만 반환형이 dict 행으로 바뀌었고(상장 필터·
-Anchor 변환은 analyze_news 소관), 나머지는 v1 코드 그대로다.
+모듈로 이관했다 — fetch_root_companies 만 반환형이 dict 행으로 바뀌었고(상장 필터·
+RootCompany 변환은 analyze_news 소관), 나머지는 v1 코드 그대로다.
 resolve_news_with_link 는 v1 resolve_news 의 SELECT 에 link 를 더한 판이다.
 
 극성 주의: fetch_relation_lines 는 전 극성을 반환한다(LLM 은 해지·부인 맥락도
@@ -22,7 +22,7 @@ from psycopg.types.json import Jsonb
 from beneficiary.models import RelationLine
 from core import neo4j_database
 
-THEMES_PER_ANCHOR = 30  # 앵커당 테마 상한 — 멤버 수 오름차순(구체 테마 우선) 절단
+THEMES_PER_ROOT = 30  # 루트 기업당 테마 상한 — 멤버 수 오름차순(구체 테마 우선) 절단
 RIVALS_PER_PROBE = 30  # probe당 경쟁사 후보 상한
 
 
@@ -82,8 +82,8 @@ async def fetch_relation_lines(conn: AsyncConnection, rep_news_id: int) -> list[
 # ── Neo4j — 테마·공급망·이웃 ─────────────────────────────────────────────────
 
 
-async def fetch_anchor_themes(name: str) -> list[dict]:
-    """상장 앵커의 소속 테마 — 멤버 수 오름차순 → 테마명 오름차순, 상한 30."""
+async def fetch_root_company_themes(name: str) -> list[dict]:
+    """상장 루트 기업의 소속 테마 — 멤버 수 오름차순 → 테마명 오름차순, 상한 30."""
 
     records = await neo4j_database.execute(
         f"""
@@ -91,7 +91,7 @@ MATCH (c:Company {{name: $name}})-[:BELONGS_TO]->(t:Theme)
 OPTIONAL MATCH (t)<-[:BELONGS_TO]-(m:Company)
 WITH t, count(m) AS member_count
 ORDER BY member_count ASC, t.name ASC
-LIMIT {THEMES_PER_ANCHOR}
+LIMIT {THEMES_PER_ROOT}
 RETURN t.name AS name, t.description AS description, member_count
 """,
         {"name": name},
@@ -100,18 +100,18 @@ RETURN t.name AS name, t.description AS description, member_count
 
 
 async def fetch_supply_neighbors_by_name(
-    anchor_name: str, exclude_names: list[str], exclude_tickers: list[str]
+    root_name: str, exclude_names: list[str], exclude_tickers: list[str]
 ) -> list[dict]:
-    """앵커(name 매칭)에 공급하는 유입 SUPPLIES_TO 1-hop 이웃 — 상장사만.
+    """루트 기업(name 매칭)에 공급하는 유입 SUPPLIES_TO 1-hop 이웃 — 상장사만.
 
-    v1 fetch_supply_neighbors 와 달리 name 으로 앵커를 특정한다 — 그래프의
+    v1 fetch_supply_neighbors 와 달리 name 으로 루트 기업를 특정한다 — 그래프의
     자연키가 name 이고 노드 ticker 는 시드 지연으로 빌 수 있어 name 이 안전한
     키다. 아이템 배열·카운트는 filter LLM 의 판단 원료다.
     """
 
     records = await neo4j_database.execute(
         """
-MATCH (n:Company)-[r:SUPPLIES_TO]->(o:Company {name: $anchor_name})
+MATCH (n:Company)-[r:SUPPLIES_TO]->(o:Company {name: $root_name})
 WHERE n.ticker IS NOT NULL
   AND NOT n.ticker IN $exclude_tickers
   AND NOT n.name   IN $exclude_names
@@ -123,7 +123,7 @@ RETURN n.ticker AS ticker, n.name AS name, n.company_id AS company_id,
        coalesce(r.news_items, [])         AS news_items,
        r.last_mentioned_at                AS last_mentioned_at
 """,
-        {"anchor_name": anchor_name, "exclude_tickers": exclude_tickers,
+        {"root_name": root_name, "exclude_tickers": exclude_tickers,
          "exclude_names": exclude_names},
     )
     return [dict(record) for record in records]
@@ -132,7 +132,7 @@ RETURN n.ticker AS ticker, n.name AS name, n.company_id AS company_id,
 async def fetch_theme_rivals(
     subject_name: str, themes: list[str], exclude_names: list[str], exclude_tickers: list[str]
 ) -> list[dict]:
-    """앵커와 probe 테마를 공유하는 상장 경쟁사 후보 + 유출 공급 아이템.
+    """루트 기업와 probe 테마를 공유하는 상장 경쟁사 후보 + 유출 공급 아이템.
 
     겹침(shared_themes)은 probe 의 핵심 테마 안에서만 센다 — 전체 테마로 세면
     대기업은 무관한 대형주끼리 겹침이 쏠린다(스펙 §4.4). reasons 는 쿼리에서
@@ -169,7 +169,7 @@ async def fetch_neighbor_names(names: list[str]) -> set[str]:
     """대상 기업들의 SUPPLIES_TO·INVESTS_IN·ACQUIRES 양방향 1-hop 이웃 name 합집합.
 
     악재 트랙 제외 집합 — 밸류체인(공급망)뿐 아니라 지분 관계(자회사·계열)도
-    배제해 앵커의 자회사가 "반사이익 경쟁사"로 추천되는 것을 차단한다.
+    배제해 루트 기업의 자회사가 "반사이익 경쟁사"로 추천되는 것을 차단한다.
     """
 
     if not names:
@@ -225,10 +225,10 @@ async def store_payload(
 _AFFIRMED = "(polarity IS NULL OR polarity = 'affirmed')"
 
 
-async def fetch_anchors(conn: AsyncConnection, rep_news_id: int) -> list[dict]:
+async def fetch_root_companies(conn: AsyncConnection, rep_news_id: int) -> list[dict]:
     """뉴스(클러스터) 관계의 subject 당사자 행 (v1 이관 — dict 반환으로 변경).
 
-    상장 필터·Anchor 변환은 analyze_news 소관(§4.1). 극성은 거르지 않는다 —
+    상장 필터·RootCompany 변환은 analyze_news 소관(§4.1). 극성은 거르지 않는다 —
     해지·부인 뉴스라도 당사자는 그 기업들이다. 티커는 원장 code → 활성
     보통주(stocks) → companies.ticker 순으로 해석한다.
     """

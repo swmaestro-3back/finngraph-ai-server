@@ -1,6 +1,6 @@
 """beneficiary compiled graph 조립 — 루프 없는 DAG + 극성 조건 분기 1개.
 
-START → analyze_news ──(error/앵커 없음/negative&probe 0)──→ END
+START → analyze_news ──(error/루트 기업 없음/negative&probe 0)──→ END
    ├─(positive)→ expand_supply ─(error/간선0)→END → filter_supply ─┐
    └─(negative)→ expand_rivals ─(error/후보0)→END → filter_rivals ─┤
                                                                    ▼
@@ -31,7 +31,7 @@ def route_after_analyze(state: GraphState) -> str:
     if state.get("error"):
         return END
     plan = state.get("plan")
-    if not state.get("anchors") or plan is None:
+    if not state.get("root_companies") or plan is None:
         return END
     if plan.polarity == "negative":
         return "expand_rivals" if plan.rival_probes else END

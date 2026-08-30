@@ -3,6 +3,8 @@
 PROMPT_VERSION 은 응답 메타데이터이자 캐시 키다 — 프롬프트·패킹 형식·규칙·
 LLM 스택을 바꾸면 반드시 올린다(b2, b3, ...). v1(app/graph)의 v15 계열과
 독립된 b 계열을 쓴다.
+이력: b1 → b2 (2026-08-30): 용어 개명 Anchor→RootCompany — 프롬프트·패킹
+라벨의 '앵커'를 '루트 기업'으로 교체.
 """
 
 from beneficiary.prompts.beneficiary_judge import BENEFICIARY_JUDGE_SYSTEM
@@ -10,7 +12,7 @@ from beneficiary.prompts.news_plan import NEWS_PLAN_SYSTEM
 from beneficiary.prompts.rival_filter import RIVAL_FILTER_SYSTEM
 from beneficiary.prompts.supply_filter import SUPPLY_FILTER_SYSTEM
 
-PROMPT_VERSION = "b1"
+PROMPT_VERSION = "b2"
 
 DISCLAIMER = (
     "본 분석은 수집된 공시·뉴스·재무 데이터에 기반한 정보 제공 목적이며, "

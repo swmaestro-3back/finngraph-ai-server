@@ -16,7 +16,7 @@ from beneficiary.workflow import (
 
 POSITIVE = NewsPlan(event_summary="s", polarity="positive", core_items=["HBM"])
 NEGATIVE = NewsPlan(event_summary="s", polarity="negative", core_items=["HBM"],
-                    rival_probes=[RivalProbe(subject_name="앵커", themes=["테마A"])])
+                    rival_probes=[RivalProbe(subject_name="루트 기업", themes=["테마A"])])
 NEGATIVE_NO_PROBE = NewsPlan(event_summary="s", polarity="negative")
 
 
@@ -29,13 +29,13 @@ def test_graph_topology_has_eight_nodes_and_starts_at_analyze():
 
 
 def test_route_after_analyze_polarity_split_and_early_exits():
-    anchors = [object()]
-    assert route_after_analyze({"error": "boom", "anchors": anchors, "plan": POSITIVE}) == END
-    assert route_after_analyze({"anchors": [], "plan": None}) == END
-    assert route_after_analyze({"anchors": anchors, "plan": POSITIVE}) == "expand_supply"
-    assert route_after_analyze({"anchors": anchors, "plan": NEGATIVE}) == "expand_rivals"
+    root_companies = [object()]
+    assert route_after_analyze({"error": "boom", "root_companies": root_companies, "plan": POSITIVE}) == END
+    assert route_after_analyze({"root_companies": [], "plan": None}) == END
+    assert route_after_analyze({"root_companies": root_companies, "plan": POSITIVE}) == "expand_supply"
+    assert route_after_analyze({"root_companies": root_companies, "plan": NEGATIVE}) == "expand_rivals"
     # negative 인데 유효 probe 0 → expand_rivals 를 실행하지 않고 즉시 END
-    assert route_after_analyze({"anchors": anchors, "plan": NEGATIVE_NO_PROBE}) == END
+    assert route_after_analyze({"root_companies": root_companies, "plan": NEGATIVE_NO_PROBE}) == END
 
 
 def test_route_after_expand_nodes():

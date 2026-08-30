@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 from beneficiary.models import (
-    Anchor,
+    RootCompany,
     Candidate,
     SupplyChainCandidate,
     NewsContext,
@@ -27,9 +27,9 @@ class GraphState(TypedDict, total=False):
     news: NewsContext
 
     # analyze_news
-    # anchors 는 상장 국내 앵커만 — 이관된 repository.fetch_anchors 행(dict)을
-    # analyze_news 가 필터·변환해 Anchor(전 필드 확정)로 넣는다.
-    anchors: list[Anchor]
+    # root_companies 는 상장 국내 루트 기업만 — 이관된 repository.fetch_root_companies 행(dict)을
+    # analyze_news 가 필터·변환해 RootCompany(전 필드 확정)로 넣는다.
+    root_companies: list[RootCompany]
     relation_lines: list[RelationLine]
     plan: NewsPlan | None
     plan_fallback: bool

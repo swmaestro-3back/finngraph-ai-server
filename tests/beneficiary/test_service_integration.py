@@ -2,7 +2,7 @@
 
 검증 계약: 호재 트랙 e2e(공급사 추천·market/track/matched_items 매핑),
 악재 트랙 e2e(경쟁사 추천·트리거 뉴스 근거), 캐시 저장·히트(LLM 재호출 없음),
-폴백 응답 비캐시, 앵커 없음 no_candidates, 미존재 뉴스 404.
+폴백 응답 비캐시, 루트 기업 없음 no_candidates, 미존재 뉴스 404.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def llm_stub(monkeypatch):
     async def fake_plan(prompt):
         state["plan_calls"] += 1
         if state["polarity"] == "negative":
-            probes = [RivalProbe(subject_name=state["anchor_name"], themes=state["themes"])]
+            probes = [RivalProbe(subject_name=state["root_name"], themes=state["themes"])]
             return NewsPlan(event_summary="악재", polarity="negative",
                             core_items=["HBM"], rival_probes=probes)
         return NewsPlan(event_summary="호재", polarity="positive", core_items=["HBM"])
@@ -83,7 +83,7 @@ async def test_positive_track_recommends_supplier_and_caches(seed, llm_stub):  #
     assert response.rep_news_id == seed["rep_news_id"]
     assert len(response.items) == 1
     item = response.items[0]
-    assert item.ticker == seed["supplier_ticker"]  # 앵커에 공급하는 유일한 상장 이웃
+    assert item.ticker == seed["supplier_ticker"]  # 루트 기업에 공급하는 유일한 상장 이웃
     assert item.track == "supply" and item.market == "KOSDAQ"
     assert "HBM" in item.matched_items
     assert item.rank == 1 and item.evidence  # 근거 링크 포함
@@ -98,7 +98,7 @@ async def test_positive_track_recommends_supplier_and_caches(seed, llm_stub):  #
 
 async def test_negative_track_recommends_rival_with_trigger_news_evidence(seed, llm_stub):  # noqa: F811
     llm_stub["polarity"] = "negative"
-    llm_stub["anchor_name"] = seed["anchor_name"]
+    llm_stub["root_name"] = seed["root_name"]
     llm_stub["themes"] = [seed["theme1"], seed["theme2"]]
 
     response = await service.get_news_beneficiaries(seed["dup_news_id"])
@@ -134,7 +134,7 @@ async def test_news_without_relations_returns_no_candidates(seed, llm_stub, conn
     try:
         response = await service.get_news_beneficiaries(bare_id)
         assert response.status == "no_candidates" and response.items == []
-        assert llm_stub["plan_calls"] == 0  # 앵커 0명 — LLM 은 돌지 않는다
+        assert llm_stub["plan_calls"] == 0  # 루트 기업 0명 — LLM 은 돌지 않는다
     finally:
         async with conn.cursor() as cur:
             await cur.execute("DELETE FROM news WHERE id = %s", (bare_id,))

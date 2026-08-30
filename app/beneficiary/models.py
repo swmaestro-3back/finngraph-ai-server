@@ -25,8 +25,8 @@ class NewsContext:
 
 
 @dataclass
-class Anchor:
-    """상장 국내 기업만 앵커다 — 해외·비상장 subject 는 analyze_news 가 걸러낸다."""
+class RootCompany:
+    """상장 국내 기업만 루트 기업다 — 해외·비상장 subject 는 analyze_news 가 걸러낸다."""
 
     company_id: int
     name: str
@@ -54,9 +54,9 @@ class SupplyChainCandidate:
     """호재 트랙 원시 후보 — 유입 SUPPLIES_TO 간선 하나."""
 
     gid: str | None  # 시장 필터·절단 후 부여되는 gNN
-    anchor_name: str
+    root_name: str
     subject_name: str  # 공급사(후보) 정규명
-    object_name: str  # 앵커 정규명
+    object_name: str  # 루트 기업 정규명
     ticker: str
     name: str
     company_id: int | None
@@ -68,7 +68,7 @@ class SupplyChainCandidate:
     news_mention_count: int = 0
     last_mentioned_at: str | None = None
     relevance: str | None = None  # None | strong | weak | irrelevant
-    anchor_index: int = 0  # 앵커 순 정렬용 내부 값 (fetch_anchors 순서)
+    root_index: int = 0  # 루트 기업 순 정렬용 내부 값 (fetch_root_companies 순서)
 
 
 @dataclass
@@ -76,7 +76,7 @@ class RivalCandidate:
     """악재 트랙 원시 후보 — 테마 겹침 경쟁사 (probe 간 티커 병합 후 1건)."""
 
     kid: str | None  # 병합·절단 후 부여되는 kNN
-    subject_name: str  # 최대 shared_themes 를 준 probe 의 앵커
+    subject_name: str  # 최대 shared_themes 를 준 probe 의 루트 기업
     ticker: str
     name: str
     company_id: int | None
@@ -146,8 +146,8 @@ class RankedItem:
 
 
 class RivalProbe(BaseModel):
-    subject_name: str = Field(description="제시된 상장 앵커 목록 안의 정규명 그대로")
-    themes: list[str] = Field(default=[], description="그 앵커의 테마 목록 안에서 사건 관련 1~3개")
+    subject_name: str = Field(description="제시된 상장 루트 기업 목록 안의 정규명 그대로")
+    themes: list[str] = Field(default=[], description="그 루트 기업의 테마 목록 안에서 사건 관련 1~3개")
 
 
 class NewsPlan(BaseModel):

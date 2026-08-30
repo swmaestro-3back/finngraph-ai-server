@@ -34,7 +34,7 @@ async def judge(state: GraphState) -> dict:
     # 않는다(스펙 §9).
     try:
         packed = pack_judge_context(
-            state["news"], state["anchors"], state["plan"], candidates,
+            state["news"], state["root_companies"], state["plan"], candidates,
             fallback_note=_fallback_note(state),
         )
         judge_output = await llm.judge_beneficiary(packed.prompt)

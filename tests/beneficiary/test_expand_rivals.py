@@ -23,15 +23,15 @@ def test_flatten_items_dedupes_and_caps_preserving_order():
 
 def test_merge_takes_max_shared_and_unions_with_caps():
     merged = merge_rival_rows([
-        ("앵커1", [_row("경쟁사", "000003", shared=1, via=("테마A",), reasons=("사유1",))]),
-        ("앵커2", [_row("경쟁사", "000003", shared=3,
+        ("루트 기업1", [_row("경쟁사", "000003", shared=1, via=("테마A",), reasons=("사유1",))]),
+        ("루트 기업2", [_row("경쟁사", "000003", shared=3,
                         via=("테마B", "테마C", "테마D", "테마E", "테마F"),
                         reasons=("사유2", "사유3", "사유4"))]),
     ])
     assert len(merged) == 1
     rival = merged[0]
     assert rival.shared_themes == 3
-    assert rival.subject_name == "앵커2"  # 최대 shared 를 준 probe 의 앵커
+    assert rival.subject_name == "루트 기업2"  # 최대 shared 를 준 probe 의 루트 기업
     assert len(rival.via_themes) == 5  # 합집합 상한 5 (첫 등장 순서 유지)
     assert rival.via_themes[0] == "테마A"
     assert len(rival.reasons) == 3  # 합집합 상한 3
@@ -41,7 +41,7 @@ def test_merge_takes_max_shared_and_unions_with_caps():
 def test_kid_order_is_shared_desc_then_ticker_and_caps_at_60():
     # Fixture: tickers in reverse order within each shared_themes group
     # to ensure tie-break sorting is actually tested
-    rows = [("앵커", [_row(f"경쟁{i}", f"{(RIVAL_POOL_CAP + 20 - i):06d}", shared=(i % 5) + 1)
+    rows = [("루트 기업", [_row(f"경쟁{i}", f"{(RIVAL_POOL_CAP + 20 - i):06d}", shared=(i % 5) + 1)
                       for i in range(RIVAL_POOL_CAP + 20)])]
     rivals = truncate_and_assign_kids(merge_rival_rows(rows))
     assert len(rivals) == RIVAL_POOL_CAP

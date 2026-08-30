@@ -5,28 +5,28 @@ from __future__ import annotations
 from beneficiary.nodes.supply import SUPPLY_POOL_CAP, build_edge_candidates, truncate_and_assign_gids
 
 
-def _row(subject, obj="앵커", ticker="000002", dc=1, nc=0):
+def _row(subject, obj="루트 기업", ticker="000002", dc=1, nc=0):
     return {"ticker": ticker, "name": subject, "company_id": 1, "subject_name": subject,
             "object_name": obj, "disclosure_count": dc, "news_mention_count": nc,
             "disclosure_items": ["HBM"], "news_items": [], "last_mentioned_at": None}
 
 
-def test_build_dedupes_same_edge_and_keeps_anchor_index():
+def test_build_dedupes_same_edge_and_keeps_root_index():
     edges = build_edge_candidates([
-        (0, "앵커", [_row("공급사A", ticker="000002"), _row("공급사A", ticker="000002")]),
-        (1, "부앵커", [_row("공급사B", obj="부앵커", ticker="000003")]),
+        (0, "루트 기업", [_row("공급사A", ticker="000002"), _row("공급사A", ticker="000002")]),
+        (1, "부루트 기업", [_row("공급사B", obj="부루트 기업", ticker="000003")]),
     ])
-    assert [(e.subject_name, e.object_name, e.anchor_index) for e in edges] == [
-        ("공급사A", "앵커", 0), ("공급사B", "부앵커", 1),
+    assert [(e.subject_name, e.object_name, e.root_index) for e in edges] == [
+        ("공급사A", "루트 기업", 0), ("공급사B", "부루트 기업", 1),
     ]
 
 
-def test_gid_order_is_anchor_then_count_desc_then_ticker():
+def test_gid_order_is_root_then_count_desc_then_ticker():
     edges = build_edge_candidates([
-        (0, "앵커", [_row("공급사B", ticker="000003", dc=1),
+        (0, "루트 기업", [_row("공급사B", ticker="000003", dc=1),
                      _row("공급사A", ticker="000002", dc=5),
                      _row("공급사C", ticker="000001", dc=1)]),  # dc 동점 → ticker asc
-        (1, "부앵커", [_row("공급사D", obj="부앵커", ticker="000009", dc=9)]),
+        (1, "부루트 기업", [_row("공급사D", obj="부루트 기업", ticker="000009", dc=9)]),
     ])
     ordered = truncate_and_assign_gids(edges)
     assert [(e.gid, e.subject_name) for e in ordered] == [
@@ -37,7 +37,7 @@ def test_gid_order_is_anchor_then_count_desc_then_ticker():
 def test_truncation_evicts_lowest_count_sum():
     rows = [_row(f"공급사{i}", ticker=f"{i:06d}", dc=2) for i in range(SUPPLY_POOL_CAP)]
     rows.append(_row("영건공급사", ticker="999999", dc=0, nc=0))  # 유일한 합 0 간선
-    ordered = truncate_and_assign_gids(build_edge_candidates([(0, "앵커", rows)]))
+    ordered = truncate_and_assign_gids(build_edge_candidates([(0, "루트 기업", rows)]))
     assert len(ordered) == SUPPLY_POOL_CAP
     assert all(e.ticker != "999999" for e in ordered)  # 최저 합 간선이 밀려난다
     kept_sums = [e.disclosure_count + e.news_mention_count for e in ordered]

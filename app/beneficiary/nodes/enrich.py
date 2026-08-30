@@ -58,7 +58,7 @@ async def _load_supply_evidence(conn, candidate: Candidate) -> None:
 
 
 def _load_rival_evidence(candidate: Candidate, news) -> None:
-    # ① 트리거 원 뉴스 — 반사이익의 사건 근거는 앵커의 악재 그 자체.
+    # ① 트리거 원 뉴스 — 반사이익의 사건 근거는 루트 기업의 악재 그 자체.
     candidate.evidence.append(Evidence(
         type="news", text=news.title, date=news.published_at, link=news.link,
     ))

@@ -8,7 +8,7 @@ v2 는 eid 를 후보별 스코프(eids_by_cid)로 관리한다 — 심사가 �
 from __future__ import annotations
 
 from beneficiary.models import (
-    Anchor,
+    RootCompany,
     Candidate,
     SupplyChainCandidate,
     NewsContext,
@@ -51,14 +51,14 @@ def _items_inline(items: list[str]) -> str:
 
 def pack_plan_context(
     news: NewsContext,
-    anchors: list[Anchor],
+    root_companies: list[RootCompany],
     relation_lines: list[RelationLine],
-    themes_by_anchor: dict[str, list[dict]],
+    themes_by_root: dict[str, list[dict]],
 ) -> str:
     lines = _news_block(news)
-    for anchor in anchors:  # 앵커는 상장 국내 기업만 (ticker 보장)
-        lines.append(f"[앵커] {anchor.name}({anchor.ticker}): {anchor.description or ''}")
-        themes = themes_by_anchor.get(anchor.name)
+    for root in root_companies:  # 루트 기업은 상장 국내 기업만 (ticker 보장)
+        lines.append(f"[루트 기업] {root.name}({root.ticker}): {root.description or ''}")
+        themes = themes_by_root.get(root.name)
         if themes:
             for theme in themes:
                 desc = (theme.get("description") or "")[:DESCRIPTION_CAP]
@@ -84,7 +84,7 @@ def pack_supply_filter_context(plan: NewsPlan, edges: list[SupplyChainCandidate]
     for edge in edges:
         items = _items_inline(list(dict.fromkeys([*edge.disclosure_items, *edge.news_items])))
         lines.append(
-            f"[{edge.gid}] (앵커: {edge.anchor_name}) {edge.subject_name} →공급→ {edge.object_name}"
+            f"[{edge.gid}] (루트: {edge.root_name}) {edge.subject_name} →공급→ {edge.object_name}"
             f" | items: {items} | 공시{edge.disclosure_count}·뉴스{edge.news_mention_count}"
         )
     return "\n".join(lines)
@@ -137,7 +137,7 @@ def _financial_block(candidate: Candidate) -> list[str]:
 
 def pack_judge_context(
     news: NewsContext,
-    anchors: list[Anchor],
+    root_companies: list[RootCompany],
     plan: NewsPlan,
     candidates: list[Candidate],
     fallback_note: str | None = None,
@@ -145,8 +145,8 @@ def pack_judge_context(
     lines = _news_block(news) + _plan_block(plan)
     if fallback_note:
         lines.append(f"[폴백 주의] {fallback_note}")
-    for anchor in anchors:
-        lines.append(f"[사건 앵커] {anchor.name}({anchor.ticker}): {anchor.description or ''}")
+    for root in root_companies:
+        lines.append(f"[사건 루트 기업] {root.name}({root.ticker}): {root.description or ''}")
     lines.append("")
 
     by_cid: dict[str, Candidate] = {}

@@ -2,8 +2,8 @@
 
 SUPPLY_FILTER_SYSTEM = """[ROLE]
 You are a Korean supply-chain analyst. You receive a news event plan (summary,
-core items) and a numbered list of supply edges "[gNN] (앵커: X) supplier
-→공급→ anchor | items: ... | 공시N·뉴스M".
+core items) and a numbered list of supply edges "[gNN] (루트: X) supplier
+→공급→ root company | items: ... | 공시N·뉴스M".
 
 [TASK]
 Classify each edge id by how relevant its supplied items are to the event's

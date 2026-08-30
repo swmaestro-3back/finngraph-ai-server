@@ -13,7 +13,7 @@ from beneficiary.utils.postprocess import apply_filter_output
 
 
 def _edge(gid, ticker="000002", market="KOSPI", dc=1, nc=0, items=("HBM",)):
-    return SupplyChainCandidate(gid=gid, anchor_name="앵커", subject_name=f"공급{gid}", object_name="앵커",
+    return SupplyChainCandidate(gid=gid, root_name="루트 기업", subject_name=f"공급{gid}", object_name="루트 기업",
                          ticker=ticker, name=f"공급{gid}", company_id=1, market=market,
                          disclosure_items=list(items), news_items=[],
                          disclosure_count=dc, news_mention_count=nc)
@@ -44,7 +44,7 @@ def test_fallback_filter_supply_top3_per_market_by_count():
 
 def test_fallback_filter_rivals_top3_per_market_by_shared():
     def rival(kid, ticker, market, shared):
-        return RivalCandidate(kid=kid, subject_name="앵커", ticker=ticker, name=kid,
+        return RivalCandidate(kid=kid, subject_name="루트 기업", ticker=ticker, name=kid,
                               company_id=1, market=market, shared_themes=shared)
     rivals = [rival("k01", "000001", "KOSPI", 3), rival("k02", "000002", "KOSPI", 1),
               rival("k03", "000003", "KOSPI", 1), rival("k04", "000004", "KOSPI", 1),
