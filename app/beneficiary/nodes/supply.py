@@ -124,7 +124,14 @@ def fallback_filter_supply(edges: list[SupplyChainCandidate]) -> tuple[list[str]
 
 async def filter_supply(state: GraphState) -> dict:
     """LLM#2(호재 트랙) — 아이템 연관성 선별. 실패는 폴백으로 계속 진행."""
+    try:
+        return await _filter_supply(state)
+    except Exception as error:
+        logger.exception("공급 선별 노드 실패")
+        return {"strong_ids": [], "weak_ids": [], "filter_fallback": False, "error": str(error)}
 
+
+async def _filter_supply(state: GraphState) -> dict:
     edges = state["edges"]
     plan = state["plan"]
 

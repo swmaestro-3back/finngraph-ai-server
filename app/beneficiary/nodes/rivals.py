@@ -149,7 +149,14 @@ def fallback_filter_rivals(rivals: list[RivalCandidate]) -> tuple[list[str], lis
 
 async def filter_rivals(state: GraphState) -> dict:
     """LLM#2(악재 트랙) — 대체 생산자 선별. 실패는 폴백으로 계속 진행."""
+    try:
+        return await _filter_rivals(state)
+    except Exception as error:
+        logger.exception("경쟁사 선별 노드 실패")
+        return {"strong_ids": [], "weak_ids": [], "filter_fallback": False, "error": str(error)}
 
+
+async def _filter_rivals(state: GraphState) -> dict:
     rivals = state["rivals"]
     plan = state["plan"]
 
