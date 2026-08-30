@@ -10,8 +10,11 @@ import logging
 
 from beneficiary import repository
 from beneficiary.models import RivalCandidate
-from beneficiary.nodes.common import apply_market_filter, derive_exclusions
+from beneficiary.nodes.common import apply_market_filter, derive_exclusions, MARKETS
 from beneficiary.state import GraphState
+from beneficiary.utils import llm
+from beneficiary.utils.packer import pack_rival_filter_context
+from beneficiary.utils.postprocess import apply_filter_output
 from core import postgres_database
 
 logger = logging.getLogger(__name__)
@@ -124,3 +127,47 @@ async def _expand_rivals(state: GraphState) -> dict:
         )
     rivals = apply_market_filter(rivals, market_rows)
     return {"rivals": truncate_and_assign_kids(rivals)}
+
+
+FALLBACK_TOP_PER_MARKET = 3
+
+
+def fallback_filter_rivals(rivals: list[RivalCandidate]) -> tuple[list[str], list[str]]:
+    """LLM 실패·core_items 없음 시의 겹침 폴백 — 시장별 상위 3개 strong."""
+
+    strong_ids: list[str] = []
+    for market in MARKETS:
+        pool = sorted(
+            [rival for rival in rivals if rival.market == market],
+            key=lambda r: (-r.shared_themes, r.ticker),
+        )[:FALLBACK_TOP_PER_MARKET]
+        strong_ids.extend(rival.kid for rival in pool)
+    for rival in rivals:
+        rival.relevance = "strong" if rival.kid in strong_ids else "irrelevant"
+    return strong_ids, []
+
+
+async def filter_rivals(state: GraphState) -> dict:
+    """LLM#2(악재 트랙) — 대체 생산자 선별. 실패는 폴백으로 계속 진행."""
+
+    rivals = state["rivals"]
+    plan = state["plan"]
+
+    output = None
+    if plan.core_items:
+        try:
+            output = await llm.filter_rivals(pack_rival_filter_context(plan, rivals))
+        except Exception:
+            logger.exception("경쟁사 선별 LLM 실패 — 겹침 폴백으로 진행")
+
+    if output is None:
+        strong_ids, weak_ids = fallback_filter_rivals(rivals)
+        return {"rivals": rivals, "strong_ids": strong_ids, "weak_ids": weak_ids,
+                "filter_fallback": True}
+
+    cap_weak_ids = {rival.kid for rival in rivals if not rival.supplied_items}
+    strong_ids, weak_ids = apply_filter_output(
+        output, {rival.kid: rival for rival in rivals}, cap_weak_ids
+    )
+    return {"rivals": rivals, "strong_ids": strong_ids, "weak_ids": weak_ids,
+            "filter_fallback": False}

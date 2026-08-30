@@ -11,8 +11,11 @@ import logging
 
 from beneficiary import repository
 from beneficiary.models import SupplyChainCandidate
-from beneficiary.nodes.common import apply_market_filter, derive_exclusions
+from beneficiary.nodes.common import apply_market_filter, derive_exclusions, MARKETS
 from beneficiary.state import GraphState
+from beneficiary.utils import llm
+from beneficiary.utils.packer import pack_supply_filter_context
+from beneficiary.utils.postprocess import apply_filter_output
 from core import postgres_database
 
 logger = logging.getLogger(__name__)
@@ -99,3 +102,48 @@ async def _expand_supply(state: GraphState) -> dict:
         )
     edges = apply_market_filter(edges, market_rows)
     return {"edges": truncate_and_assign_gids(edges)}
+
+
+FALLBACK_TOP_PER_MARKET = 3
+
+
+def fallback_filter_supply(edges: list[SupplyChainCandidate]) -> tuple[list[str], list[str]]:
+    """LLM 실패·core_items 없음 시의 카운트 폴백 — 시장별 상위 3개 strong."""
+
+    strong_ids: list[str] = []
+    for market in MARKETS:
+        pool = sorted(
+            [edge for edge in edges if edge.market == market],
+            key=lambda e: (-(e.disclosure_count + e.news_mention_count), e.ticker),
+        )[:FALLBACK_TOP_PER_MARKET]
+        strong_ids.extend(edge.gid for edge in pool)
+    for edge in edges:
+        edge.relevance = "strong" if edge.gid in strong_ids else "irrelevant"
+    return strong_ids, []
+
+
+async def filter_supply(state: GraphState) -> dict:
+    """LLM#2(호재 트랙) — 아이템 연관성 선별. 실패는 폴백으로 계속 진행."""
+
+    edges = state["edges"]
+    plan = state["plan"]
+
+    output = None
+    if plan.core_items:
+        try:
+            output = await llm.filter_supply(pack_supply_filter_context(plan, edges))
+        except Exception:
+            logger.exception("공급 선별 LLM 실패 — 카운트 폴백으로 진행")
+
+    if output is None:
+        strong_ids, weak_ids = fallback_filter_supply(edges)
+        return {"edges": edges, "strong_ids": strong_ids, "weak_ids": weak_ids,
+                "filter_fallback": True}
+
+    cap_weak_ids = {edge.gid for edge in edges
+                    if not edge.disclosure_items and not edge.news_items}
+    strong_ids, weak_ids = apply_filter_output(
+        output, {edge.gid: edge for edge in edges}, cap_weak_ids
+    )
+    return {"edges": edges, "strong_ids": strong_ids, "weak_ids": weak_ids,
+            "filter_fallback": False}
