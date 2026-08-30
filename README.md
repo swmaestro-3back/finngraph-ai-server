@@ -24,6 +24,7 @@ source news and sentences) are fetched lazily per relationship.
 | `GET /product/{name}` | Subgraph centered on a product |
 | `GET /commodity/{name}` | Subgraph centered on a commodity |
 | `GET /relationship/{element_id}` | Full detail (provenance) of a single relationship |
+| `GET /news/{news_id}/insights` | 뉴스 사건의 수혜/피해 종목 + 근거 (SUPPLIES_TO 1-hop → 공시 수 상위 3개 → 재무 테이블 심사·캐시) |
 
 ## Directory Structure
 
@@ -49,7 +50,7 @@ finngraph-kg-api/
 │   └── scripts/
 │       └── seed.py           # Seed data for Neo4j
 ├── Dockerfile                # API image build
-├── docker-compose.yml        # api + neo4j services
+├── docker-compose.yml        # api service (Neo4j·Postgres 는 finngraph-etl 스택 공유)
 ├── pyproject.toml            # Project metadata & dependencies (uv)
 └── .env.example              # Environment variable template
 ```
@@ -68,8 +69,12 @@ cp .env.example .env
 | `NEO4J_USERNAME` | Neo4j username |
 | `NEO4J_PASSWORD` | Neo4j password |
 | `NEO4J_DATABASE` | Database name to use |
+| `DATABASE_URL` | finngraph-etl 의 ETL Postgres 접속 URL (인사이트 기능이 원장·재무·캐시를 직접 읽음) |
+| `BEDROCK_REGION` | 인사이트 기능의 Bedrock 리전 (기본 `us-east-1`) |
+| `AWS_BEARER_TOKEN_BEDROCK` | Bedrock API 키 (ETL 레포와 동일 발급분 사용 가능) |
+| `BEDROCK_JUDGE_MODEL` | 후보 심사 모델 (기본 `us.anthropic.claude-sonnet-4-6`) |
 
-> When running with Docker, `NEO4J_URI` is automatically overridden to `bolt://neo4j:7687` inside the container, so you can leave the `.env` value as the local one.
+> When running with Docker, `NEO4J_URI` and `DATABASE_URL` are automatically overridden inside the container to the finngraph-etl network service names (`bolt://neo4j:7687`, `db:5432`), so you can leave the `.env` values as the local ones.
 
 ## How to Run
 
@@ -83,7 +88,14 @@ uv sync
 
 ### 2. Run with Docker
 
-Builds and starts both the API server and Neo4j.
+Neo4j and Postgres are **not** started here — the API shares the instances from the
+[finngraph-etl](../finngraph-etl) stack (same data the ETL pipelines load). Start those first:
+
+```bash
+cd ../finngraph-etl && docker compose up -d db neo4j neo4j-init
+```
+
+Then build and start the API server (it joins the `finngraph-etl_default` network):
 
 ```bash
 docker compose up -d --build
@@ -92,7 +104,7 @@ docker compose up -d --build
 - API: http://localhost:8000
 - **Swagger UI: http://localhost:8000/docs**
 - ReDoc: http://localhost:8000/redoc
-- Neo4j Browser: http://localhost:7474
+- Neo4j Browser: http://localhost:7474 (finngraph-etl 스택이 노출)
 
 The image is not rebuilt automatically after you change the source, so always pass `--build`.
 
@@ -103,11 +115,8 @@ docker compose ps
 # tail api logs
 docker compose logs -f api
 
-# stop
+# stop (Neo4j·Postgres 는 finngraph-etl 소관이라 여기서 내려가지 않는다)
 docker compose down
-
-# stop and delete the Neo4j data volume
-docker compose down -v
 ```
 
 ## Testing
