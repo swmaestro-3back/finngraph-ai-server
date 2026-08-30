@@ -7,7 +7,9 @@ validate_and_rank(Task 13): 심사(LLM#3) 재강제 — v1 복사 + 후보별 ei
 
 from __future__ import annotations
 
-from beneficiary.models import FilterOutput
+import re
+
+from beneficiary.models import Candidate, FilterOutput, JudgeOutput, RankedItem
 
 
 def apply_filter_output(
@@ -47,3 +49,67 @@ def apply_filter_output(
         else:
             candidate.relevance = "irrelevant"
     return strong_ids, weak_ids
+
+
+CITATION_RE = re.compile(r"\[e\d+\]")
+
+RECOMMEND_PER_MARKET = 2  # 최종 추천 시장당 상한 — 프롬프트만으로 2+2 를 보증하지 않는다
+
+
+def validate_and_rank(
+    judge: JudgeOutput,
+    by_cid: dict[str, Candidate],
+    eids_by_cid: dict[str, set[str]],
+) -> list[RankedItem]:
+    """심사 출력 재강제 — v1 복사 + 강화 2건(스펙 §4.8).
+
+    ① eid 검증은 후보별 스코프: insight 의 evidence_ids 는 그 후보 자신의 eid
+    집합에 속해야 한다(전역 집합 검증은 남의 근거로 접지되는 구멍).
+    ② 시장 쿼터 코드 강제: insight 순서를 유지하며 시장별 최대 2개만 남긴다.
+    기존 규칙(비실존 cid/eid 폐기, 인용 없는 rationale low 강등, 중복 cid 첫
+    판정만, benefit 아닌 impact 폐기)은 유지 — impact 는 pydantic Literal 로도
+    막혀 있지만 방어적으로 한 번 더 거른다.
+    """
+
+    items: list[RankedItem] = []
+    seen_cids: set[str] = set()
+
+    for insight in judge.insights:
+        candidate = by_cid.get(insight.candidate_id)
+        if candidate is None or insight.impact != "benefit":
+            continue
+        if insight.candidate_id in seen_cids:
+            continue
+        seen_cids.add(insight.candidate_id)
+
+        scope = eids_by_cid.get(insight.candidate_id, set())
+        evidence_ids = [eid for eid in insight.evidence_ids if eid in scope]
+        if not evidence_ids:
+            # 자기 근거가 하나도 없는 판단은 접지되지 않았으므로 버린다.
+            continue
+
+        confidence = insight.confidence
+        if not CITATION_RE.search(insight.rationale):
+            confidence = "low"
+
+        items.append(RankedItem(
+            candidate=candidate,
+            impact=insight.impact,
+            confidence=confidence,
+            rationale=insight.rationale,
+            caveats=insight.caveats,
+            evidence_ids=evidence_ids,
+        ))
+
+    per_market: dict[str, int] = {}
+    trimmed: list[RankedItem] = []
+    for item in items:
+        market = item.candidate.market or "시장 미상"
+        if per_market.get(market, 0) >= RECOMMEND_PER_MARKET:
+            continue
+        per_market[market] = per_market.get(market, 0) + 1
+        trimmed.append(item)
+
+    for position, item in enumerate(trimmed, start=1):
+        item.rank = position
+    return trimmed
