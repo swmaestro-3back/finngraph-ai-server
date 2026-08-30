@@ -1,0 +1,90 @@
+"""enrich — 근거 선정 순서·후보당 상한·affirmed 0건 제거 (DB 는 모듈 시임으로 대체)."""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
+import pytest
+
+import sys
+
+from graph.models import Candidate, SupplyChainCandidate, NewsContext
+from graph import repository
+
+# Import the enrich submodule directly from sys.modules to bypass __init__.py shadowing
+import graph.nodes.enrich
+enrich_module = sys.modules['graph.nodes.enrich']
+
+
+@pytest.fixture(autouse=True)
+def fake_db(monkeypatch):
+    @asynccontextmanager
+    async def fake_connection():
+        yield object()
+
+    monkeypatch.setattr(enrich_module.postgres_database, "connection", fake_connection)
+
+    async def no_financials(conn, company_id, limit=4):
+        return [{"fiscal_yymm": "202512", "revenue": 100}]
+
+    async def no_valuation(conn, ticker):
+        return None
+
+    monkeypatch.setattr(repository, "fetch_financial_history", no_financials)
+    monkeypatch.setattr(repository, "fetch_latest_valuation", no_valuation)
+
+
+def _edge(gid, subject):
+    return SupplyChainCandidate(gid=gid, root_name="루트 기업", subject_name=subject, object_name="루트 기업",
+                         ticker="000001", name=subject, company_id=1)
+
+
+def _supply_candidate(edges):
+    return Candidate(ticker="000001", name="공급사", company_id=1, track="supply",
+                     market="KOSPI", source_edges=edges)
+
+
+NEWS = NewsContext(title="트리거", summary=None, published_at="2026-08-30",
+                   link="https://n.example/1")
+
+
+async def test_supply_evidence_follows_gid_order_and_caps_at_six(monkeypatch):
+    calls = []
+
+    async def fake_evidence(conn, subject, relation, obj, limit=3):
+        calls.append(subject)
+        return [{"id": 1, "source_type": "news", "evidence": f"{subject}-{i}",
+                 "item": None, "mentioned_at": "2026-08-01", "rcept_no": None,
+                 "link": "https://l"} for i in range(3)]
+
+    monkeypatch.setattr(repository, "fetch_edge_evidence", fake_evidence)
+    candidate = _supply_candidate([_edge("g01", "간선1"), _edge("g02", "간선2"),
+                                   _edge("g03", "간선3")])
+    result = await enrich_module.enrich({"news": NEWS, "candidates": [candidate]})
+    kept = result["candidates"][0]
+    assert len(kept.evidence) == 6  # 간선당 3건 × 2간선에서 상한 도달
+    assert calls == ["간선1", "간선2"]  # g03 은 호출조차 안 함
+    assert kept.financials == [{"fiscal_yymm": "202512", "revenue": 100}]
+
+
+async def test_supply_candidate_with_zero_affirmed_evidence_is_dropped(monkeypatch):
+    async def empty_evidence(conn, subject, relation, obj, limit=3):
+        return []
+
+    monkeypatch.setattr(repository, "fetch_edge_evidence", empty_evidence)
+    result = await enrich_module.enrich(
+        {"news": NEWS, "candidates": [_supply_candidate([_edge("g01", "간선1")])]}
+    )
+    assert result["candidates"] == [] and "error" not in result  # 규칙 제거 (노드 실패 아님)
+
+
+async def test_rival_candidate_gets_news_and_theme_evidence():
+    candidate = Candidate(ticker="000003", name="경쟁사", company_id=3, track="rival",
+                          market="KOSPI", via_themes=["테마A"],
+                          reasons=["대체 생산 경쟁", "동일 제품"])
+    result = await enrich_module.enrich({"news": NEWS, "candidates": [candidate]})
+    kept = result["candidates"][0]
+    types = [e.type for e in kept.evidence]
+    assert types == ["news", "theme", "theme"]
+    assert kept.evidence[0].link == "https://n.example/1"  # 트리거 뉴스 근거
+    assert "대체 생산 경쟁" in kept.evidence[1].text and kept.evidence[1].link is None

@@ -1,0 +1,156 @@
+"""호재 트랙 — expand_supply(Cypher, LLM 없음) / filter_supply(LLM#2)는 Task 10.
+
+각 상장 루트 기업의 유입 SUPPLIES_TO 1-hop 을 모아 시장 필터 → 총량 절단 → gid
+부여까지 결정적으로 처리한다(스펙 §4.2). 매칭은 name 기반 — 그래프의 자연키가
+name 이고 노드 ticker 는 시드 지연으로 빌 수 있다.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from graph import repository
+from graph.models import SupplyChainCandidate
+from graph.nodes.common import apply_market_filter, derive_exclusions, MARKETS
+from graph.state import GraphState
+from graph.utils import llm
+from graph.utils.packer import pack_supply_filter_context
+from graph.utils.postprocess import apply_filter_output
+from core import postgres_database
+
+logger = logging.getLogger(__name__)
+
+SUPPLY_POOL_CAP = 200  # LLM#2 입력 보호 — 초과분은 (dc+nc) desc, ticker asc 로 절단
+
+
+def build_edge_candidates(rows_by_root: list[tuple[int, str, list[dict]]]) -> list[SupplyChainCandidate]:
+    """(root_index, root_name, rows) → SupplyChainCandidate — (subject, object) 중복 제거."""
+
+    seen: set[tuple[str, str]] = set()
+    edges: list[SupplyChainCandidate] = []
+    for root_index, root_name, rows in rows_by_root:
+        for row in rows:
+            key = (row["subject_name"], row["object_name"])
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append(SupplyChainCandidate(
+                gid=None,
+                root_name=root_name,
+                subject_name=row["subject_name"],
+                object_name=row["object_name"],
+                ticker=row["ticker"],
+                name=row["name"],
+                company_id=row["company_id"],
+                disclosure_items=list(row["disclosure_items"] or []),
+                news_items=list(row["news_items"] or []),
+                disclosure_count=row["disclosure_count"],
+                news_mention_count=row["news_mention_count"],
+                last_mentioned_at=(str(row["last_mentioned_at"])
+                                   if row["last_mentioned_at"] is not None else None),
+                root_index=root_index,
+            ))
+    return edges
+
+
+def truncate_and_assign_gids(edges: list[SupplyChainCandidate]) -> list[SupplyChainCandidate]:
+    """총량 절단(상한 200) 후 최종 정렬·gid 부여 — 전부 결정적.
+
+    절단: (disclosure+news) 내림차순, 동점 ticker 오름차순.
+    최종 정렬: 루트 기업 순 → disclosure_count 내림차순 → ticker 오름차순.
+    """
+
+    if len(edges) > SUPPLY_POOL_CAP:
+        logger.info("공급 간선 절단: %d → %d", len(edges), SUPPLY_POOL_CAP)
+        edges = sorted(
+            edges,
+            key=lambda e: (-(e.disclosure_count + e.news_mention_count), e.ticker),
+        )[:SUPPLY_POOL_CAP]
+
+    edges = sorted(edges, key=lambda e: (e.root_index, -e.disclosure_count, e.ticker))
+    for index, edge in enumerate(edges, start=1):
+        edge.gid = f"g{index:02d}"
+    return edges
+
+
+async def expand_supply(state: GraphState) -> dict:
+    try:
+        return await _expand_supply(state)
+    except Exception as error:
+        logger.exception("공급망 확장 실패")
+        return {"edges": [], "error": str(error)}
+
+
+async def _expand_supply(state: GraphState) -> dict:
+    root_companies = state["root_companies"]
+    exclude_names, exclude_tickers = derive_exclusions(root_companies, state["relation_lines"])
+
+    rows_by_root = []
+    for index, root in enumerate(root_companies):
+        rows = await repository.fetch_supply_neighbors_by_name(
+            root.name, sorted(exclude_names), sorted(exclude_tickers)
+        )
+        rows_by_root.append((index, root.name, rows))
+
+    edges = build_edge_candidates(rows_by_root)
+    if not edges:
+        return {"edges": []}
+
+    async with postgres_database.connection() as conn:
+        market_rows = await repository.fetch_market_info(
+            conn, sorted({edge.ticker for edge in edges})
+        )
+    edges = apply_market_filter(edges, market_rows)
+    return {"edges": truncate_and_assign_gids(edges)}
+
+
+FALLBACK_TOP_PER_MARKET = 3
+
+
+def fallback_filter_supply(edges: list[SupplyChainCandidate]) -> tuple[list[str], list[str]]:
+    """LLM 실패·core_items 없음 시의 카운트 폴백 — 시장별 상위 3개 strong."""
+
+    strong_ids: list[str] = []
+    for market in MARKETS:
+        pool = sorted(
+            [edge for edge in edges if edge.market == market],
+            key=lambda e: (-(e.disclosure_count + e.news_mention_count), e.ticker),
+        )[:FALLBACK_TOP_PER_MARKET]
+        strong_ids.extend(edge.gid for edge in pool)
+    for edge in edges:
+        edge.relevance = "strong" if edge.gid in strong_ids else "irrelevant"
+    return strong_ids, []
+
+
+async def filter_supply(state: GraphState) -> dict:
+    """LLM#2(호재 트랙) — 아이템 연관성 선별. 실패는 폴백으로 계속 진행."""
+    try:
+        return await _filter_supply(state)
+    except Exception as error:
+        logger.exception("공급 선별 노드 실패")
+        return {"strong_ids": [], "weak_ids": [], "filter_fallback": False, "error": str(error)}
+
+
+async def _filter_supply(state: GraphState) -> dict:
+    edges = state["edges"]
+    plan = state["plan"]
+
+    output = None
+    if plan.core_items:
+        try:
+            output = await llm.filter_supply(pack_supply_filter_context(plan, edges))
+        except Exception:
+            logger.exception("공급 선별 LLM 실패 — 카운트 폴백으로 진행")
+
+    if output is None:
+        strong_ids, weak_ids = fallback_filter_supply(edges)
+        return {"edges": edges, "strong_ids": strong_ids, "weak_ids": weak_ids,
+                "filter_fallback": True}
+
+    cap_weak_ids = {edge.gid for edge in edges
+                    if not edge.disclosure_items and not edge.news_items}
+    strong_ids, weak_ids = apply_filter_output(
+        output, {edge.gid: edge for edge in edges}, cap_weak_ids
+    )
+    return {"edges": edges, "strong_ids": strong_ids, "weak_ids": weak_ids,
+            "filter_fallback": False}

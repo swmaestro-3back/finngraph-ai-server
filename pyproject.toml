@@ -30,7 +30,7 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-# 앱 코드는 app/ 을 루트로 하는 평면 import(core, api, beneficiary ...)를 쓴다.
+# 앱 코드는 app/ 을 루트로 하는 평면 import(core, api, graph ...)를 쓴다.
 pythonpath = [".", "app"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
