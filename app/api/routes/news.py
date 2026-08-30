@@ -14,8 +14,7 @@ async def get_news_beneficiaries(news_id: int) -> BeneficiaryResponse:
     """
     뉴스 사건의 수혜 종목을 극성 2트랙(공급망/경쟁사)으로 추천한다.
 
-    캐시 히트 시 수 ms, 미스 시 워크플로우 실행에 동기 대기한다(~20초).
-    ok + 비폴백 + 추천 있음 응답만 news_beneficiaries 에 캐시된다.
+    캐시 없음 — 매 호출 워크플로우 실행에 동기 대기한다(~20초).
     """
     try:
         return await beneficiary_service.get_news_beneficiaries(news_id)

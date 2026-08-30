@@ -201,7 +201,6 @@ MERGE (c)-[b:BELONGS_TO]->(t) SET b.reason = member.reason
     async with conn.cursor() as cur:
         await cur.execute("DELETE FROM relation_sources WHERE subject_name = ANY(%s)",
                           ([names["root"], names["supplier"]],))
-        await cur.execute("DELETE FROM news_beneficiaries WHERE rep_news_id = %s", (ids["rep_news_id"],))
         await cur.execute("DELETE FROM news WHERE id = ANY(%s)",
                           ([ids["rep_news_id"], ids["dup_news_id"], ids["evidence_news_id"]],))
         for key in ["root", "partner", "supplier", "rival", "subsid"]:
@@ -283,19 +282,6 @@ async def test_fetch_neighbor_names_covers_three_relation_types_both_directions(
             f"비상장공급-{seed['uid']}"} <= neighbors
     assert seed["rival_name"] not in neighbors  # 루트 기업와 직접 관계 없음
     assert await repository.fetch_neighbor_names([]) == set()
-
-
-async def test_cache_roundtrip_and_conflict(conn, seed):
-    payload = {"status": "ok", "items": [{"ticker": "000001"}]}
-    assert await repository.fetch_cached_payload(conn, seed["rep_news_id"], "b1") is None
-    await repository.store_payload(conn, seed["rep_news_id"], "b1", payload)
-    cached = await repository.fetch_cached_payload(conn, seed["rep_news_id"], "b1")
-    assert cached == payload
-    # 같은 키 재저장은 조용히 무시 (ON CONFLICT DO NOTHING)
-    await repository.store_payload(conn, seed["rep_news_id"], "b1", {"status": "other"})
-    assert (await repository.fetch_cached_payload(conn, seed["rep_news_id"], "b1")) == payload
-    # 버전이 다르면 미스
-    assert await repository.fetch_cached_payload(conn, seed["rep_news_id"], "b2") is None
 
 
 async def test_ported_v1_queries(conn, seed):

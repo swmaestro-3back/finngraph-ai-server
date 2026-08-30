@@ -1,8 +1,8 @@
 """beneficiary 서비스 통합 테스트 — LLM 스텁, DB 실물 (Task 4 시드 재사용).
 
 검증 계약: 호재 트랙 e2e(공급사 추천·market/track/matched_items 매핑),
-악재 트랙 e2e(경쟁사 추천·트리거 뉴스 근거), 캐시 저장·히트(LLM 재호출 없음),
-폴백 응답 비캐시, 루트 기업 없음 no_candidates, 미존재 뉴스 404.
+악재 트랙 e2e(경쟁사 추천·트리거 뉴스 근거), 무캐시(매 호출 재계산),
+플랜 폴백 시 계속 진행, 루트 기업 없음 no_candidates, 미존재 뉴스 404.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ async def test_unknown_news_raises_not_found(llm_stub):
         await service.get_news_beneficiaries(-1)
 
 
-async def test_positive_track_recommends_supplier_and_caches(seed, llm_stub):  # noqa: F811
+async def test_positive_track_recommends_supplier(seed, llm_stub):  # noqa: F811
     response = await service.get_news_beneficiaries(seed["dup_news_id"])
 
     assert response.status == "ok"
@@ -88,12 +88,12 @@ async def test_positive_track_recommends_supplier_and_caches(seed, llm_stub):  #
     assert "HBM" in item.matched_items
     assert item.rank == 1 and item.evidence  # 근거 링크 포함
 
-    # 캐시 히트 — 같은 클러스터의 다른 뉴스 id 로 재호출해도 LLM 이 다시 돌지 않는다.
-    calls_before = (llm_stub["plan_calls"], llm_stub["judge_calls"])
+    # 무캐시 — 같은 클러스터의 다른 뉴스 id 로 재호출하면 워크플로우가 다시 돈다.
+    calls_before = llm_stub["plan_calls"]
     again = await service.get_news_beneficiaries(seed["rep_news_id"])
-    assert (llm_stub["plan_calls"], llm_stub["judge_calls"]) == calls_before
-    assert again.news_id == seed["rep_news_id"]  # 캐시 페이로드의 news_id 는 요청 값으로 교체
-    assert again.items[0].ticker == item.ticker
+    assert llm_stub["plan_calls"] == calls_before + 1
+    assert again.news_id == seed["rep_news_id"]
+    assert again.items[0].ticker == item.ticker  # 결정적 파이프라인 — 결과는 동일
 
 
 async def test_negative_track_recommends_rival_with_trigger_news_evidence(seed, llm_stub):  # noqa: F811
@@ -113,17 +113,13 @@ async def test_negative_track_recommends_rival_with_trigger_news_evidence(seed, 
     assert news_evidence.link == f"https://news.example/{seed['uid']}"  # 트리거 원 뉴스 링크
 
 
-async def test_plan_fallback_response_is_not_cached(seed, llm_stub, conn, monkeypatch):  # noqa: F811
+async def test_plan_fallback_continues(seed, llm_stub, monkeypatch):  # noqa: F811
     async def boom(prompt):
         raise RuntimeError("bedrock down")
 
     monkeypatch.setattr(llm, "plan_news", boom)
     response = await service.get_news_beneficiaries(seed["dup_news_id"])
     assert response.status in ("ok", "no_candidates")  # 폴백 계획으로 계속 진행은 한다
-
-    from graph import repository
-    cached = await repository.fetch_cached_payload(conn, seed["rep_news_id"], response.prompt_version)
-    assert cached is None  # 폴백 응답은 캐시 금지
 
 
 async def test_news_without_relations_returns_no_candidates(seed, llm_stub, conn):  # noqa: F811

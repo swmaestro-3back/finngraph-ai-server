@@ -1,4 +1,4 @@
-"""beneficiary 데이터 계층 — 신규 쿼리(PG·Neo4j)·v1 이관 쿼리·응답 캐시.
+"""beneficiary 데이터 계층 — 신규 쿼리(PG·Neo4j)·v1 이관 쿼리.
 
 v1(삭제됨)의 읽기 쿼리 5개(fetch_root_companies, fetch_market_info,
 fetch_edge_evidence, fetch_financial_history, fetch_latest_valuation)는 이
@@ -17,7 +17,6 @@ from typing import Any
 
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
 
 from graph.models import RelationLine
 from core import neo4j_database
@@ -183,41 +182,6 @@ RETURN DISTINCT n.name AS name
         {"names": names},
     )
     return {record["name"] for record in records}
-
-
-# ── 응답 캐시 (news_beneficiaries) ───────────────────────────────────────────
-
-
-async def fetch_cached_payload(
-    conn: AsyncConnection, rep_news_id: int, prompt_version: str
-) -> dict | None:
-    row = await _fetch_one(
-        conn,
-        """
-        SELECT payload FROM news_beneficiaries
-        WHERE rep_news_id = %(rep_news_id)s AND prompt_version = %(prompt_version)s
-        """,
-        {"rep_news_id": rep_news_id, "prompt_version": prompt_version},
-    )
-    return row["payload"] if row else None
-
-
-async def store_payload(
-    conn: AsyncConnection, rep_news_id: int, prompt_version: str, payload: dict
-) -> None:
-    """캐시 저장 — 경쟁 삽입은 먼저 쓴 쪽이 이긴다 (ON CONFLICT DO NOTHING)."""
-
-    async with conn.cursor() as cur:
-        await cur.execute(
-            """
-            INSERT INTO news_beneficiaries (rep_news_id, prompt_version, payload)
-            VALUES (%(rep_news_id)s, %(prompt_version)s, %(payload)s)
-            ON CONFLICT (rep_news_id, prompt_version) DO NOTHING
-            """,
-            {"rep_news_id": rep_news_id, "prompt_version": prompt_version,
-             "payload": Jsonb(payload)},
-        )
-    await conn.commit()
 
 
 # ── v1 이관 쿼리 (원본: 삭제된 insights/repository.py — 코드 그대로) ─────────

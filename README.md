@@ -24,7 +24,7 @@ source news and sentences) are fetched lazily per relationship.
 | `GET /product/{name}` | Subgraph centered on a product |
 | `GET /commodity/{name}` | Subgraph centered on a commodity |
 | `GET /relationship/{element_id}` | Full detail (provenance) of a single relationship |
-| `GET /news/{news_id}/beneficiaries` | 뉴스 사건의 수혜 종목을 극성 2트랙(공급망/경쟁사)으로 추천. 캐시 히트 시 수 ms, 미스 시 ~20초 동기 생성 |
+| `GET /news/{news_id}/beneficiaries` | 뉴스 사건의 수혜 종목을 극성 2트랙(공급망/경쟁사)으로 추천. 매 호출 ~20초 동기 생성 (캐시 없음) |
 
 ## Directory Structure
 

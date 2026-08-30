@@ -1,8 +1,6 @@
-"""beneficiary 서비스 — 뉴스 해석 → 캐시 조회 → 워크플로우 실행 → 저장·응답.
+"""beneficiary 서비스 — 뉴스 해석 → 워크플로우 실행 → 응답 조립.
 
-캐시 저장 조건(스펙 §7): status == "ok" 이고 폴백 플래그가 없으며 items 가
-비어 있지 않은 응답만 저장한다. no_candidates 는 ETL 원장 적재 지연 레이스로도
-발생하므로 영구 캐시 금지 — 재계산은 싸다. 무효화는 prompt_version 인상뿐.
+응답 캐시는 없다 — 매 호출 재계산한다(관측·회귀 확인은 LangSmith 트레이스로).
 """
 
 from __future__ import annotations
@@ -35,13 +33,6 @@ async def get_news_beneficiaries(news_id: int) -> BeneficiaryResponse:
         if resolved is None:
             raise NewsNotFoundError(f"news not found: {news_id}")
         rep_news_id = resolved["rep_news_id"]
-        cached = await repository.fetch_cached_payload(conn, rep_news_id, PROMPT_VERSION)
-
-    if cached is not None:
-        # payload 의 news_id 는 최초 요청자의 값이라 현재 요청 값으로 교체한다.
-        return BeneficiaryResponse.model_validate(cached).model_copy(
-            update={"news_id": news_id}
-        )
 
     started = time.monotonic()
     news = NewsContext(
@@ -66,7 +57,7 @@ async def get_news_beneficiaries(news_id: int) -> BeneficiaryResponse:
         time.monotonic() - started, state.get("pool_size", 0), len(items), status,
     )
 
-    response = BeneficiaryResponse(
+    return BeneficiaryResponse(
         news_id=news_id,
         rep_news_id=rep_news_id,
         status=status,
@@ -75,16 +66,6 @@ async def get_news_beneficiaries(news_id: int) -> BeneficiaryResponse:
         prompt_version=PROMPT_VERSION,
         disclaimer=DISCLAIMER,
     )
-
-    fallback = bool(
-        state.get("plan_fallback") or state.get("probe_fallback") or state.get("filter_fallback")
-    )
-    if status == "ok" and not fallback and response.items:
-        async with postgres_database.connection() as conn:
-            await repository.store_payload(
-                conn, rep_news_id, PROMPT_VERSION, response.model_dump(mode="json")
-            )
-    return response
 
 
 # ── 응답 조립 ────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
-"""beneficiary API 응답 모델 — HTTP 직렬화 계약 + 캐시 payload 형식.
+"""beneficiary API 응답 모델 — HTTP 직렬화 계약.
 
-캐시(news_beneficiaries.payload)는 BeneficiaryResponse.model_dump(mode="json")
-전문을 저장하므로, 이 모델의 형태 변경은 PROMPT_VERSION 인상과 함께 한다.
+이 모델의 형태 변경은 PROMPT_VERSION 인상과 함께 한다(응답 메타데이터로
+버전이 노출되므로 소비자가 형태 변화를 감지할 수 있게).
 """
 
 from __future__ import annotations
