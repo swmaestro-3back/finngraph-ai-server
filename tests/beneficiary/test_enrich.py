@@ -6,9 +6,14 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+import sys
+
 from beneficiary.models import Candidate, SupplyChainCandidate, NewsContext
 from beneficiary import repository
-from beneficiary.nodes import enrich as enrich_module
+
+# Import the enrich submodule directly from sys.modules to bypass __init__.py shadowing
+import beneficiary.nodes.enrich
+enrich_module = sys.modules['beneficiary.nodes.enrich']
 
 
 @pytest.fixture(autouse=True)
