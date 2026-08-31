@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from beneficiary.models import RootCompany, NewsPlan, NewsContext, RelationLine
+from beneficiary.models import RootCompany, NewsPlan, NewsContext, RelationLine, ScenarioProbe
 from beneficiary.agent.nodes import planner
 from beneficiary.agent.nodes.planner import sanitize_plan
 from beneficiary.agent.nodes.common import derive_exclusions
@@ -25,17 +25,11 @@ def _line(subject="루트 기업", s_code="000001", obj="상대", o_code=None, i
                         polarity=polarity, subject_impact=s_impact, object_impact=None)
 
 
-THEMES = {"루트 기업": [{"name": "테마A", "description": "", "member_count": 2},
-                   {"name": "테마B", "description": "", "member_count": 3},
-                   {"name": "테마C", "description": "", "member_count": 4},
-                   {"name": "테마D", "description": "", "member_count": 5}]}
-
-
 def test_sanitize_dedups_and_caps_core_items():
     plan = NewsPlan(
         event_summary="s", polarity="positive", core_items=["HBM", "HBM", "a", "b", "c", "d"],
     )
-    clean = sanitize_plan(plan, THEMES)
+    clean = sanitize_plan(plan)
     assert clean.core_items == ["HBM", "a", "b", "c", "d"]  # dedup + 상한 5
 
 
@@ -53,8 +47,6 @@ async def test_negative_polarity_stops_with_not_positive(monkeypatch):
                         lambda conn, nid: _async(root_rows))
     monkeypatch.setattr(planner.repository, "fetch_relation_lines",
                         lambda conn, nid: _async([]))
-    monkeypatch.setattr(planner.repository, "fetch_root_company_themes",
-                        lambda name: _async([]))
     monkeypatch.setattr(planner.llm, "plan_news",
                         lambda prompt: _async(NewsPlan(event_summary="s", polarity="negative")))
 
@@ -62,6 +54,37 @@ async def test_negative_polarity_stops_with_not_positive(monkeypatch):
 
     assert result["status"] == "not_positive"
     assert "호재" in result["reason"]
+
+
+def test_sanitize_dedups_probes_by_stage_and_query():
+    plan = NewsPlan(
+        event_summary="s", polarity="positive",
+        scenario_probes=[
+            ScenarioProbe(stage=1, hypothesis="h1", query="변압기"),
+            ScenarioProbe(stage=1, hypothesis="다른 문장", query="변압기"),  # 중복
+            ScenarioProbe(stage=2, hypothesis="h2", query="변압기"),        # stage 다름 — 유지
+            ScenarioProbe(stage=1, hypothesis="h3", query="   "),           # 빈 query
+        ],
+    )
+    probes = sanitize_plan(plan).scenario_probes
+    assert [(p.stage, p.query) for p in probes] == [(1, "변압기"), (2, "변압기")]
+
+
+def test_sanitize_caps_probes_at_four():
+    plan = NewsPlan(
+        event_summary="s", polarity="positive",
+        scenario_probes=[ScenarioProbe(stage=1, hypothesis=f"h{i}", query=f"q{i}")
+                         for i in range(6)],
+    )
+    assert len(sanitize_plan(plan).scenario_probes) == 4
+
+
+def test_sanitize_drops_probes_when_not_positive():
+    plan = NewsPlan(
+        event_summary="s", polarity="negative",
+        scenario_probes=[ScenarioProbe(stage=1, hypothesis="h", query="q")],
+    )
+    assert sanitize_plan(plan).scenario_probes == []
 
 
 def test_derive_exclusions_unions_names_and_tickers():

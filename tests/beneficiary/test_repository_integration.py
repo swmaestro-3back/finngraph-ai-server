@@ -240,14 +240,6 @@ async def test_fetch_relation_lines_returns_all_polarities(conn, seed):
     assert line.subject_code == seed["root_ticker"] and line.object_code == seed["partner_ticker"]
 
 
-async def test_fetch_root_company_themes_orders_by_member_count_asc(seed):
-    themes = await repository.fetch_root_company_themes(seed["root_name"])
-    # 테마2(멤버 2) 가 테마1(멤버 3) 보다 먼저 — 구체적 테마 우선
-    assert [t["name"] for t in themes] == [seed["theme2"], seed["theme1"]]
-    assert themes[0]["member_count"] == 2
-    assert await repository.fetch_root_company_themes("없는기업") == []
-
-
 async def test_fetch_supply_neighbors_by_name(seed):
     rows = await repository.fetch_supply_neighbors_by_name(
         seed["root_name"],

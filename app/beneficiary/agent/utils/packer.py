@@ -52,18 +52,10 @@ def pack_plan_context(
     news: NewsContext,
     root_companies: list[RootCompany],
     relation_lines: list[RelationLine],
-    themes_by_root: dict[str, list[dict]],
 ) -> str:
     lines = _news_block(news)
     for root in root_companies:  # 루트 기업은 상장 국내 기업만 (ticker 보장)
         lines.append(f"[루트 기업] {root.name}({root.ticker}): {root.description or ''}")
-        themes = themes_by_root.get(root.name)
-        if themes:
-            for theme in themes:
-                desc = (theme.get("description") or "")[:DESCRIPTION_CAP]
-                lines.append(f"  - 테마: {theme['name']} ({desc})")
-        else:
-            lines.append("  - 테마: (없음)")
     lines.append("")
     lines.append("[관계 라인 — 전 극성. denied/terminated 는 끊긴 관계다]")
     for rl in relation_lines:

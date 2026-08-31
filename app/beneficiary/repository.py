@@ -5,9 +5,9 @@ RootCompany 변환은 여기가 아니라 build_plan 소관이다 — 이 모듈
 돌려준다.
 
 Cypher 는 f-string 으로 조립한 뒤 LiteralString 으로 cast 한다 — 보간되는 값이
-enum 상수와 모듈 상수(LIMIT)뿐이라 실제로는 리터럴이지만 타입 검사기가 그걸
-증명하지 못하기 때문이다. 사용자 입력은 예외 없이 $파라미터로만 나간다. 이
-불변식이 깨지는 순간 cast 도 같이 걷어내야 한다.
+enum 상수뿐이라 실제로는 리터럴이지만 타입 검사기가 그걸 증명하지 못하기
+때문이다. 사용자 입력은 예외 없이 $파라미터로만 나간다. 이 불변식이 깨지는
+순간 cast 도 같이 걷어내야 한다.
 
 극성 주의: fetch_relation_lines 는 전 극성을 반환한다(LLM 은 해지·부인 맥락도
 봐야 한다). 반면 근거 조회(fetch_edge_evidence)는 affirmed 만 쓴다.
@@ -22,8 +22,6 @@ from psycopg.rows import dict_row
 
 from beneficiary.models import RelationLine
 from core import MARKETS, NodeLabel, RelationshipType, neo4j_client
-
-THEMES_PER_ROOT = 30  # 루트 기업당 테마 상한 — 멤버 수 오름차순(구체 테마 우선) 절단
 
 
 async def _fetch_all(conn: AsyncConnection, query: str, params: Any = None) -> list[dict]:
@@ -78,22 +76,7 @@ async def fetch_relation_lines(conn: AsyncConnection, rep_news_id: int) -> list[
     return [RelationLine(**row) for row in rows]
 
 
-# ── Neo4j — 테마·공급망·이웃 ─────────────────────────────────────────────────
-
-
-async def fetch_root_company_themes(name: str) -> list[dict]:
-    """상장 루트 기업의 소속 테마 — 멤버 수 오름차순 → 테마명 오름차순, 상한 30."""
-
-    query = cast(LiteralString, f"""
-MATCH (c:{NodeLabel.COMPANY} {{name: $name}})-[:{RelationshipType.BELONGS_TO}]->(t:{NodeLabel.THEME})
-OPTIONAL MATCH (t)<-[:{RelationshipType.BELONGS_TO}]-(m:{NodeLabel.COMPANY})
-WITH t, count(m) AS member_count
-ORDER BY member_count ASC, t.name ASC
-LIMIT {THEMES_PER_ROOT}
-RETURN t.name AS name, t.description AS description, member_count
-""")
-    records = await neo4j_client.execute(query, {"name": name})
-    return [dict(record) for record in records]
+# ── Neo4j — 공급망·이웃 ──────────────────────────────────────────────────────
 
 
 async def fetch_supply_neighbors_by_name(

@@ -1,36 +1,24 @@
-"""planner 노드 (LLM#1) — 뉴스 → 계획(극성·핵심 아이템).
+"""planner 노드 (LLM#1) — 뉴스 → 계획(극성 게이트·핵심 아이템·시나리오 probe).
 
-실패 구분(스펙 §4.1/§9): DB·LLM 실패는 예외로 올려보내고 그래프가
-error 로 강등한다(workflow 의 error_handler → END → 503). 데이터가 없어 더
-갈 곳이 없으면 status·reason 을 넣고 정상 종료한다 — 계획을 지어내는
-폴백은 없다. 루트 기업은 상장 국내 기업만 — 해외·비상장
-subject 는 걸러내며, 상장 루트 기업 0명이면 no_root_companies 로 끝난다.
+실패 구분(스펙 §4.5/§9): DB·LLM 실패는 예외로 올려보내고 그래프가 error 로
+강등한다. 데이터가 없어 더 갈 곳이 없으면 status·reason 을 넣고 정상 종료한다.
+
+조기 종료는 둘뿐이다 — no_root_companies, not_positive. scenario_probes 가
+0개여도 종료하지 않는다: supply 트랙만으로 진행할 수 있고, 풀이 정말 비었는지는
+candidate_selector 가 팬인에서 판정한다.
 """
 
 from __future__ import annotations
 
-import asyncio
-
 from beneficiary import repository
-from beneficiary.models import RootCompany, NewsPlan
+from beneficiary.models import RootCompany, NewsPlan, ScenarioProbe
 from beneficiary.agent.state import GraphState
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.packer import pack_plan_context
 from core import postgres_client
 
 CORE_ITEMS_CAP = 5
-
-async def fetch_themes_by_root(root_companies: list[RootCompany]) -> dict[str, list[dict]]:
-    """루트 기업별 테마 조회는 서로 독립이다 — 순차 await 하지 않는다."""
-
-    themes_per_root = await asyncio.gather(
-        *(repository.fetch_root_company_themes(root.name) for root in root_companies)
-    )
-    return {
-        root.name: themes
-        for root, themes in zip(root_companies, themes_per_root)
-        if themes
-    }
+SCENARIO_PROBES_CAP = 4
 
 
 def to_root_companies(rows: list[dict]) -> list[RootCompany]:
@@ -47,36 +35,46 @@ def to_root_companies(rows: list[dict]) -> list[RootCompany]:
         if row["ticker"] is not None and row["company_id"] is not None
     ]
 
-def sanitize_plan(plan: NewsPlan, themes_by_root: dict[str, list[dict]]) -> NewsPlan:
-    """LLM 출력 재강제 — 목록 밖 항목 폐기, dedup."""
+
+def sanitize_plan(plan: NewsPlan) -> NewsPlan:
+    """LLM 출력 재강제 — 화이트리스트가 없으므로 형태 검증만 한다(스펙 §4.3).
+
+    이전 판의 목록 대조(루트 기업명·테마명)는 사라졌다. 벡터 검색은 임의
+    문자열을 받으므로 검증할 목록이 없고, 그 방어선은 theme 트랙의 유사도
+    임계값과 filter_theme 로 옮겨갔다(스펙 §4.4).
+    """
+
     core_items = list(dict.fromkeys(item for item in plan.core_items if item))[:CORE_ITEMS_CAP]
-    return plan.model_copy(update={"core_items": core_items})
+
+    probes: list[ScenarioProbe] = []
+    if plan.polarity == "positive":
+        seen: set[tuple[int, str]] = set()
+        for probe in plan.scenario_probes:
+            query = probe.query.strip()
+            key = (probe.stage, query)
+            if not query or not probe.hypothesis.strip() or key in seen:
+                continue
+            seen.add(key)
+            probes.append(probe)
+        probes = probes[:SCENARIO_PROBES_CAP]
+
+    return plan.model_copy(update={"core_items": core_items, "scenario_probes": probes})
 
 
 async def build_plan(state: GraphState) -> dict:
     async with postgres_client.connection() as conn:
-        # Root Company 조회
         root_companies = to_root_companies(
             await repository.fetch_root_companies(conn, state["rep_news_id"])
         )
-
-        # 만약 RootCompany가 없다면 바로 반환
         if not root_companies:
             return {"root_companies": [], "relation_lines": [], "plan": None,
                     "status": "no_root_companies",
                     "reason": "이 뉴스에서 상장 국내 기업 당사자를 찾지 못했습니다."}
-
-        # 뉴스에서 추출된 관계 조회
         relation_lines = await repository.fetch_relation_lines(conn, state["rep_news_id"])
-
-    themes_by_root = await fetch_themes_by_root(root_companies)
 
     # LLM 실패를 정형 계획으로 덮지 않는다 — 예외는 그래프가 error 로 강등한다.
     plan = sanitize_plan(
-        await llm.plan_news(
-            pack_plan_context(state["news"], root_companies, relation_lines, themes_by_root)
-        ),
-        themes_by_root,
+        await llm.plan_news(pack_plan_context(state["news"], root_companies, relation_lines))
     )
 
     result = {"root_companies": root_companies, "relation_lines": relation_lines, "plan": plan}

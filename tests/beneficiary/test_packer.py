@@ -29,14 +29,13 @@ def _edge(gid="g01", items=("HBM",)):
                          news_mention_count=5)
 
 
-def test_pack_plan_context_lists_root_companies_themes_and_relations():
+def test_pack_plan_context_lists_root_companies_and_relations():
     lines = [RelationLine(subject_name="루트기업", subject_code="000001", relation="SUPPLIES_TO",
                           object_name="상대기업", object_code="000009", item="HBM",
                           polarity="affirmed", subject_impact="negative", object_impact="neutral")]
-    themes = {"루트기업": [{"name": "테마A", "description": "설명A", "member_count": 2}]}
-    prompt = pack_plan_context(NEWS, [ROOT], lines, themes)
+    prompt = pack_plan_context(NEWS, [ROOT], lines)
     assert "타이틀" in prompt and "루트기업" in prompt
-    assert "테마A" in prompt and "SUPPLIES_TO" in prompt and "affirmed" in prompt
+    assert "SUPPLIES_TO" in prompt and "affirmed" in prompt
 
 
 def test_pack_supply_filter_lines_show_items_or_placeholder():
