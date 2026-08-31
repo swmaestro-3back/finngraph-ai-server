@@ -18,7 +18,7 @@ from beneficiary.agent.workflow import (
 
 def test_topology_is_flat_and_starts_at_planner():
     drawable = beneficiary_graph.get_graph()
-    assert {"planner", "expand_supply", "filter_supply",
+    assert {"planner", "supply_track",
             "candidate_selector", "finance_collector", "evaluator"} == {
         n for n in drawable.nodes if not n.startswith("__")
     }
@@ -30,7 +30,7 @@ def test_every_node_can_exit_early():
     # 정지 신호는 어느 노드에서든 END 로 나갈 수 있어야 한다 (evaluator 는 종점).
     targets = {edge.source for edge in beneficiary_graph.get_graph().edges
                if edge.target == "__end__"}
-    assert {"planner", "expand_supply", "filter_supply",
+    assert {"planner", "supply_track",
             "candidate_selector", "finance_collector", "evaluator"} <= targets
 
 
@@ -43,9 +43,10 @@ def test_stop_or_passes_through_only_when_not_stopped():
 
 def test_every_node_registers_an_error_handler():
     # 예외는 그래프 밖으로 나가지 않는다 — 노드 하나라도 빠지면 500 이 샌다.
+    # supply_track 은 예외 없이 outcome 값만 반환하는 래퍼라 예외이다
+    # (내부 노드의 error_handler 는 tracks/supply/graph.py 소관).
     nodes = beneficiary_graph.nodes
-    for name in ("planner", "expand_supply", "filter_supply",
-                 "candidate_selector", "finance_collector", "evaluator"):
+    for name in ("planner", "candidate_selector", "finance_collector", "evaluator"):
         assert nodes[name].error_handler_node, f"{name} 에 error_handler 가 없다"
 
 

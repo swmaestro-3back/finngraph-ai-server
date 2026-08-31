@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from beneficiary.agent.nodes.supply_chain import SUPPLY_POOL_CAP, build_edge_candidates, truncate_and_assign_gids
+from beneficiary.agent.tracks.supply.nodes import SUPPLY_POOL_CAP, build_edge_candidates, truncate_and_assign_gids
 
 
 def _row(subject, obj="루트 기업", ticker="000002", dc=1, nc=0):

@@ -1,7 +1,8 @@
 """beneficiary 워크플로우의 GraphState.
 
-strong_ids/weak_ids 는 관측·테스트 전용 요약(LangSmith 트레이스 가독성)이다 —
-분류의 원천은 후보 객체의 relevance 이며 다운스트림 로직은 이 키를 읽지 않는다.
+strong_ids/weak_ids 는 트랙 내부 관측용(LangSmith 트레이스 가독성) 요약이다 —
+분류의 원천은 후보 객체의 relevance 이며, 각 트랙 서브그래프 자체 state 에만
+있고 이 부모 state 에는 올라오지 않는다.
 
 종료 신호는 둘뿐이다 — error 는 장애(→ 503), status 는 정상 종료다. 노드는
 더 진행할 수 없다고 판단하면 그 자리에서 status·reason 을 넣고 반환하고,
@@ -44,10 +45,6 @@ class GraphState(TypedDict, total=False):
     # 트랙 신호 — status/error 를 트랙 로컬로 담는다. 팬인에서 집계한다.
     supply_outcome: TrackOutcome | None
     theme_outcome: TrackOutcome | None
-
-    # filter_*
-    strong_ids: list[str]
-    weak_ids: list[str]
 
     # candidate_selector
     candidates: list[Candidate]

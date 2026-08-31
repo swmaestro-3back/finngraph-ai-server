@@ -14,7 +14,7 @@ import logging
 from beneficiary import repository
 from beneficiary.models import SupplyChainCandidate
 from beneficiary.agent.nodes.common import derive_exclusions
-from beneficiary.agent.state import GraphState
+from beneficiary.agent.tracks.supply.state import SupplyTrackState
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.packer import pack_supply_filter_context
 from beneficiary.agent.utils.postprocess import apply_filter_output
@@ -75,7 +75,7 @@ def truncate_and_assign_gids(edges: list[SupplyChainCandidate]) -> list[SupplyCh
     return edges
 
 
-async def expand_supply(state: GraphState) -> dict:
+async def expand_supply(state: SupplyTrackState) -> dict:
     root_companies = state["root_companies"]
     exclude_names, exclude_tickers = derive_exclusions(root_companies, state["relation_lines"])
 
@@ -93,13 +93,12 @@ async def expand_supply(state: GraphState) -> dict:
 
     edges = build_edge_candidates(rows_by_root)
     if not edges:
-        return {"edges": [], "status": "no_pool",
-                "reason": "루트 기업에 납품하는 상장 공급사를 그래프에서 찾지 못했습니다."}
+        return {"edges": []}
 
     return {"edges": truncate_and_assign_gids(edges)}
 
 
-async def filter_supply(state: GraphState) -> dict:
+async def filter_supply(state: SupplyTrackState) -> dict:
     """LLM#2(호재 트랙) — 아이템 연관성 선별. 실패는 그래프가 error 로 강등한다."""
 
     edges = state["edges"]

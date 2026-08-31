@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from beneficiary.models import SupplyChainCandidate, FilterOutput, NewsPlan
-from beneficiary.agent.nodes import supply_chain as supply_module
+from beneficiary.agent.tracks.supply import nodes as supply_module
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.postprocess import apply_filter_output
 

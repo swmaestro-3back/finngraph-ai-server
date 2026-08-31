@@ -1,7 +1,7 @@
 """beneficiary compiled graph 조립 — 호재 단일 선형 트랙.
 
 START → planner ─(장애/데이터 없음/악재)─→ END
-   → expand_supply → filter_supply
+   → supply_track (expand_supply → filter_supply 서브그래프)
    → candidate_selector → finance_collector → evaluator → END
 
 정지 규칙은 하나다 — 상태에 error(장애) 나 status(정상 조기 종료) 가 들어오면
@@ -12,9 +12,14 @@ not_positive 로 status 에 넣으므로, 나머지 엣지는 전부 stop_or 로
 status 는 노드가 직접 넣는다(더 갈 곳이 없다는 정상 판단). error 는 노드가
 넣지 않는다 — 노드는 그냥 예외를 올리고, 여기 등록된 error_handler 가 그것을
 error 로 강등한다. 스펙 §9(예외는 그래프 밖으로 나가지 않는다)의 구현부가
-노드 8곳의 try/except 가 아니라 이 파일 한 곳이라는 뜻이다. 덕분에 노드는
+노드들의 try/except 가 아니라 이 파일 한 곳이라는 뜻이다. 덕분에 노드는
 성공 경로만 쓰고, 재시도(retry_policy)·타임아웃(timeout)도 같은 자리에서
 선언된다.
+
+supply_track 은 자체 예외를 내지 않는 래퍼다 — 내부 실패는 서브그래프가
+supply_outcome(TrackOutcome) 값으로 흡수한다(tracks/supply/graph.py). candidate_selector
+가 아직 supply_outcome 을 읽지 않으므로, _stopped 가 그 error 를 봐서 대신
+멈춘다 — candidate_selector 가 이걸 읽게 되면(추후 태스크) 이 특례는 걷어낸다.
 """
 
 from __future__ import annotations
@@ -29,15 +34,15 @@ from langgraph.types import Command, RetryPolicy
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 from psycopg import OperationalError
 
+from beneficiary.models import TrackOutcome
 from beneficiary.agent.nodes import (
     build_plan,
     collect_financials,
     evaluate,
-    expand_supply,
-    filter_supply,
     select_candidates,
 )
 from beneficiary.agent.state import GraphState
+from beneficiary.agent.tracks.supply import build_supply_subgraph
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +78,9 @@ def demote_to_error(fallback: dict | Callable[[GraphState], dict]):
 
 def _stopped(state: GraphState) -> bool:
     """장애든 정상 조기 종료든 — 멈추기로 했으면 더 가지 않는다."""
+    outcome = state.get("supply_outcome")
+    if outcome is not None and outcome.error:
+        return True
     return bool(state.get("error") or state.get("status"))
 
 
@@ -85,6 +93,20 @@ def stop_or(next_node: str) -> Callable[[GraphState], str]:
     return route
 
 
+_supply_subgraph = build_supply_subgraph()
+
+
+async def supply_track(state: GraphState) -> dict:
+    """supply 서브그래프 래퍼 — 부모/자식 state 스키마를 잇는다."""
+    result = await _supply_subgraph.ainvoke({
+        "news": state["news"], "plan": state["plan"],
+        "root_companies": state["root_companies"],
+        "relation_lines": state["relation_lines"],
+    })
+    return {"edges": result.get("edges", []),
+            "supply_outcome": result.get("outcome") or TrackOutcome()}
+
+
 def build_beneficiary_graph():
     builder = StateGraph(GraphState)
     builder.add_node(
@@ -94,16 +116,7 @@ def build_beneficiary_graph():
             {"root_companies": [], "relation_lines": [], "plan": None}
         ),
     )
-    builder.add_node(
-        "expand_supply", expand_supply,
-        retry_policy=DB_RETRY, timeout=DB_TIMEOUT,
-        error_handler=demote_to_error({"edges": []}),
-    )
-    builder.add_node(
-        "filter_supply", filter_supply,
-        timeout=LLM_TIMEOUT,
-        error_handler=demote_to_error({"strong_ids": [], "weak_ids": []}),
-    )
+    builder.add_node("supply_track", supply_track)  # 래퍼는 예외를 내지 않는다 — error_handler 없음
     builder.add_node(
         "candidate_selector", select_candidates,
         error_handler=demote_to_error({"candidates": []}),  # 순수 로직 — 재시도·타임아웃 없음
@@ -123,13 +136,10 @@ def build_beneficiary_graph():
 
     builder.add_edge(START, "planner")
     builder.add_conditional_edges(
-        "planner", stop_or("expand_supply"), ["expand_supply", END]
+        "planner", stop_or("supply_track"), ["supply_track", END]
     )
     builder.add_conditional_edges(
-        "expand_supply", stop_or("filter_supply"), ["filter_supply", END]
-    )
-    builder.add_conditional_edges(
-        "filter_supply", stop_or("candidate_selector"), ["candidate_selector", END]
+        "supply_track", stop_or("candidate_selector"), ["candidate_selector", END]
     )
     builder.add_conditional_edges(
         "candidate_selector", stop_or("finance_collector"), ["finance_collector", END]
