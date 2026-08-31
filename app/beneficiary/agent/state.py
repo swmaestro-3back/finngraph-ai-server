@@ -20,6 +20,8 @@ from beneficiary.models import (
     NewsPlan,
     RankedItem,
     RelationLine,
+    ThemeCandidate,
+    TrackOutcome,
 )
 
 
@@ -35,8 +37,13 @@ class GraphState(TypedDict, total=False):
     relation_lines: list[RelationLine]
     plan: NewsPlan | None
 
-    # 트랙별 원시 후보
+    # 트랙별 원시 후보 — 각 트랙 서브그래프만 자기 키를 쓴다(동시 쓰기 없음)
     edges: list[SupplyChainCandidate]
+    theme_hits: list[ThemeCandidate]
+
+    # 트랙 신호 — status/error 를 트랙 로컬로 담는다. 팬인에서 집계한다.
+    supply_outcome: TrackOutcome | None
+    theme_outcome: TrackOutcome | None
 
     # filter_*
     strong_ids: list[str]

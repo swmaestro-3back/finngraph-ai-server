@@ -41,6 +41,36 @@ class RelationLine:
 
 
 @dataclass
+class TrackOutcome:
+    """트랙 서브그래프가 부모에 올리는 유일한 신호.
+
+    status 는 정상 조기 종료(no_pool | no_candidates), error 는 장애다.
+    둘 다 None 이면 정상이다 — 부모는 이 값을 예외가 아니라 값으로 받는다.
+    """
+
+    status: str | None = None
+    reason: str | None = None
+    error: str | None = None
+
+
+@dataclass
+class ThemeCandidate:
+    """호재 theme 트랙 원시 후보 — reason 벡터 검색 히트 (티커 병합 후 1건)."""
+
+    tid: str | None  # 병합·절단 후 부여되는 tNN
+    stage: int  # 최고 점수를 준 probe 의 단계 (1=직접, 2=2차)
+    hypothesis: str  # 그 probe 의 가설 문장 — 근거 서사
+    ticker: str
+    name: str
+    company_id: int | None
+    market: str | None = None
+    score: float = 0.0  # 최고 유사도
+    matched_themes: list[str] = field(default_factory=list)  # 상한 5
+    matched_reasons: list[str] = field(default_factory=list)  # 상한 3 — evidence 원문
+    relevance: str | None = None  # None | strong | weak | irrelevant
+
+
+@dataclass
 class SupplyChainCandidate:
     """호재 트랙 원시 후보 — 유입 SUPPLIES_TO 간선 하나."""
 
@@ -116,10 +146,19 @@ class RankedItem:
 # ── LLM 구조화 출력 ──────────────────────────────────────────────────────────
 
 
+class ScenarioProbe(BaseModel):
+    stage: Literal[1, 2] = Field(
+        description="1=사건의 직접 수혜, 2=그 수혜에서 파생되는 2차 수요"
+    )
+    hypothesis: str = Field(description="이 단계의 수혜 논리 한국어 1문장 — 왜 이 수요가 생기는가")
+    query: str = Field(description="테마 편입 이유와 매칭될 검색 문구 — 명사구 중심, 기업명 금지")
+
+
 class NewsPlan(BaseModel):
     event_summary: str = Field(description="사건 해석 1~2문장, 한국어")
     polarity: Literal["positive", "negative"]
     core_items: list[str] = Field(default=[], description="뉴스에 실제 등장한 품목·기술 명사구 1~5개")
+    scenario_probes: list[ScenarioProbe] = Field(default=[], description="positive 일 때만 채운다")
 
 
 class FilterOutput(BaseModel):

@@ -11,6 +11,9 @@ from beneficiary.models import (
     FilterOutput,
     EvaluatorInsight,
     NewsPlan,
+    ScenarioProbe,
+    ThemeCandidate,
+    TrackOutcome,
 )
 
 
@@ -40,3 +43,24 @@ def test_candidate_defaults():
     e = SupplyChainCandidate(gid=None, root_name="a", subject_name="s", object_name="o",
                       ticker="000002", name="공급사", company_id=2)
     assert e.relevance is None and e.disclosure_items == []
+
+
+def test_scenario_probe_defaults_and_plan_field():
+    probe = ScenarioProbe(stage=2, hypothesis="전력망 증설로 변압기 수요가 는다",
+                          query="변압기 초고압 전력기기")
+    plan = NewsPlan(event_summary="s", polarity="positive", scenario_probes=[probe])
+    assert plan.scenario_probes[0].stage == 2
+    assert plan.core_items == []
+
+
+def test_theme_candidate_defaults():
+    hit = ThemeCandidate(tid=None, stage=1, hypothesis="h", ticker="005930",
+                         name="삼성전자", company_id=1)
+    assert hit.score == 0.0
+    assert hit.matched_themes == [] and hit.matched_reasons == []
+    assert hit.relevance is None
+
+
+def test_track_outcome_is_clean_by_default():
+    outcome = TrackOutcome()
+    assert outcome.status is None and outcome.reason is None and outcome.error is None
