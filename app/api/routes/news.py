@@ -2,8 +2,8 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from graph import service as beneficiary_service
-from graph.api_models import BeneficiaryResponse
+from beneficiary import service as beneficiary_service
+from beneficiary.schemas import BeneficiaryResponse
 
 router = APIRouter(prefix="/api/v1", tags=["News"])
 logger = logging.getLogger(__name__)

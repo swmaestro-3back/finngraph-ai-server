@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # 인사이트 기능용. 모델 id 는 계정에 활성화된 인퍼런스 프로파일 기준.
     bedrock_region: str = "us-east-1"
     aws_bearer_token_bedrock: str = ""
-    bedrock_judge_model: str = "us.anthropic.claude-sonnet-4-6"
+    bedrock_evaluator_model: str = "us.anthropic.claude-sonnet-4-6"
     # beneficiary 에이전트의 계획·선별용 경량 모델 (버전 접미사 필수)
     bedrock_light_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 

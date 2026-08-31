@@ -8,8 +8,8 @@ Supports only `GET` methods - used exclusively in the knowledge graph explorer.
 
 Finngraph KG API exposes a **financial knowledge graph** stored in Neo4j over a REST API.
 
-The graph connects entities such as stocks (KOSPI / KOSDAQ / NYSE / NASDAQ), themes, commodities, products and countries through relationships like supply chains, exports, acquisitions,
-investments, and competition.
+The graph connects companies (KOSPI / KOSDAQ) and themes through relationships like supply
+chains, acquisitions, and investments.
 
 Each read endpoint returns a **subgraph** (nodes + relationships) centered on the requested
 entity, which a client can render as an interactive graph. Edge details (full provenance such as
@@ -19,40 +19,54 @@ source news and sentences) are fetched lazily per relationship.
 
 | Method & Path | Description |
 | --- | --- |
-| `GET /stock/{ticker}` | Subgraph within 3 hops of the given stock |
-| `GET /theme/{name}` | Subgraph centered on a theme |
-| `GET /product/{name}` | Subgraph centered on a product |
-| `GET /commodity/{name}` | Subgraph centered on a commodity |
-| `GET /relationship/{element_id}` | Full detail (provenance) of a single relationship |
+| `GET /companies/{ticker}` | Subgraph within 3 hops of the given company |
+| `GET /themes/{name}` | Subgraph centered on a theme |
+| `GET /relationships/{element_id}` | Full detail (provenance) of a single relationship |
 | `GET /news/{news_id}/beneficiaries` | 뉴스 사건의 수혜 종목을 극성 2트랙(공급망/경쟁사)으로 추천. 매 호출 ~20초 동기 생성 (캐시 없음) |
 
 ## Directory Structure
 
+기능(feature) 단위 패키지를 쓴다 — 한 기능의 스키마·서비스·데이터 접근이
+한 폴더에 모여 있고, `app/api/routes/` 는 그 기능을 HTTP 로 노출하는 얇은
+어댑터다. 의존 방향은 `api → service → agent → repository → core` 한 방향뿐이다.
+
 ```
 finngraph-kg-api/
 ├── app/
-│   ├── main.py               # FastAPI app entrypoint (lifespan, router mounting)
-│   ├── crud.py               # Neo4j query functions (subgraph / relationship lookups)
-│   ├── models.py             # Graph domain enums (NodeLabel, RelationshipType)
-│   ├── schemas.py            # Pydantic response schemas (GraphResponse, ...)
+│   ├── main.py                   # FastAPI app entrypoint (lifespan, router mounting)
 │   ├── api/
-│   │   ├── main.py           # Aggregates all route routers into api_router
-│   │   └── routes/           # Endpoint handlers
-│   │       ├── stock.py
+│   │   ├── main.py               # Aggregates all route routers into api_router
+│   │   └── routes/               # Endpoint handlers (얇게 — 로직은 각 기능 패키지에)
+│   │       ├── company.py
 │   │       ├── theme.py
-│   │       ├── product.py
-│   │       ├── commodity.py
-│   │       └── relationship.py
+│   │       ├── relationship.py
+│   │       └── news.py
+│   ├── knowledge_graph/          # 지식그래프 조회 기능
+│   │   ├── repository.py         # Neo4j READ queries (subgraph / relationship lookups)
+│   │   └── schemas.py            # Pydantic response schemas (GraphResponse, ...)
+│   ├── beneficiary/              # 수혜주 추천 에이전트 기능
+│   │   ├── schemas.py            # HTTP 응답 계약
+│   │   ├── service.py            # 유스케이스 — HTTP 계약을 아는 유일한 곳
+│   │   ├── repository.py         # Postgres·Neo4j 조회
+│   │   ├── models.py             # 도메인 모델 + LLM 구조화 출력 계약
+│   │   └── agent/                # LangGraph 본체 — FastAPI 를 모른다
+│   │       ├── workflow.py       # 그래프 조립·라우팅
+│   │       ├── state.py
+│   │       ├── nodes/            # 각 단계 노드 (트랙별 expand/filter 포함)
+│   │       ├── prompts/          # 시스템 프롬프트 + PROMPT_VERSION
+│   │       └── utils/            # Bedrock 러너블·프롬프트 패킹·출력 후처리
 │   ├── core/
-│   │   ├── config.py         # Settings loaded from .env (pydantic-settings)
-│   │   ├── db.py             # Neo4j async driver (singleton)
-│   │   └── logger.py         # Logging setup
-│   └── scripts/
-│       └── seed.py           # Seed data for Neo4j
-├── Dockerfile                # API image build
-├── docker-compose.yml        # api service (Neo4j·Postgres 는 finngraph-etl 스택 공유)
-├── pyproject.toml            # Project metadata & dependencies (uv)
-└── .env.example              # Environment variable template
+│   │   ├── config.py             # Settings loaded from .env (pydantic-settings)
+│   │   ├── graph_schema.py       # 그래프 어휘 (NodeLabel, RelationshipType, MARKETS) — 두 기능 공유
+│   │   ├── neo4j.py              # Neo4jClient — async driver 싱글톤
+│   │   ├── postgres.py           # PostgresClient — async 커넥션 풀 싱글톤
+│   │   └── logger.py             # Logging setup
+├── tests/
+│   └── beneficiary/              # 단위 테스트 + 통합 테스트(`-m integration`, 로컬 DB 필요)
+├── Dockerfile                    # API image build
+├── docker-compose.yml            # api service (Neo4j·Postgres 는 finngraph-etl 스택 공유)
+├── pyproject.toml                # Project metadata & dependencies (uv)
+└── .env.example                  # Environment variable template
 ```
 
 ## Environment Variables

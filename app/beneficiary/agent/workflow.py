@@ -1,0 +1,172 @@
+"""beneficiary compiled graph 조립 — 극성 분기를 가진 단일 그래프.
+
+START → planner ─(장애/데이터 없음)─→ END
+   ├─(positive)→ expand_supply → filter_supply ─┐
+   └─(negative)→ expand_rivals → filter_rivals ─┤
+                                                ▼
+   candidate_selector → finance_collector → evaluator → END
+
+정지 규칙은 하나다 — 상태에 error(장애) 나 status(정상 조기 종료) 가 들어오면
+그 다음 라우터가 END 로 보낸다. 그래서 분기다운 분기는 극성을 고르는
+route_after_plan 하나뿐이고 나머지 엣지는 전부 stop_or 다.
+조건부 엣지는 순수 라우팅만 한다(상태 변경 금지).
+
+status 는 노드가 직접 넣는다(더 갈 곳이 없다는 정상 판단). error 는 노드가
+넣지 않는다 — 노드는 그냥 예외를 올리고, 여기 등록된 error_handler 가 그것을
+error 로 강등한다. 스펙 §9(예외는 그래프 밖으로 나가지 않는다)의 구현부가
+노드 8곳의 try/except 가 아니라 이 파일 한 곳이라는 뜻이다. 덕분에 노드는
+성공 경로만 쓰고, 재시도(retry_policy)·타임아웃(timeout)도 같은 자리에서
+선언된다.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import timedelta
+from typing import Callable
+
+from langgraph.errors import NodeError
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, RetryPolicy
+from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
+from psycopg import OperationalError
+
+from beneficiary.agent.nodes import (
+    build_plan,
+    collect_financials,
+    evaluate,
+    expand_rivals,
+    expand_supply,
+    filter_rivals,
+    filter_supply,
+    select_candidates,
+)
+from beneficiary.agent.state import GraphState
+
+logger = logging.getLogger(__name__)
+
+# 인프라 일시 장애만 재시도한다 — psycopg.OperationalError 는 풀 고갈
+# (PoolTimeout)까지 덮는다. LLM·검증 오류는 여기 없다: 그쪽 재시도는 체인의
+# with_retry 소관이고, 노드를 통째로 다시 도는 건 LLM 호출을 중복 과금한다.
+DB_RETRY = RetryPolicy(
+    max_attempts=3,
+    retry_on=(ServiceUnavailable, SessionExpired, TransientError, OperationalError),
+)
+
+# 시도당 상한 — 정상 지연이 아니라 멈춘 호출을 끊기 위한 값이다.
+# LLM 쪽은 botocore read_timeout(120s) 위에 얹는 안전망이다.
+DB_TIMEOUT = timedelta(seconds=60)
+LLM_TIMEOUT = timedelta(seconds=180)
+
+
+def demote_to_error(fallback: dict | Callable[[GraphState], dict]):
+    """노드 예외 → error 강등 핸들러. retry_policy 가 소진된 뒤에만 불린다.
+
+    반환한 update 가 상태에 병합되면 그 노드의 조건부 엣지가 error 를 보고
+    END 로 보낸다. 대체값을 지어내는 폴백은 없다 — fallback 은 그 노드가
+    쓰기로 한 키를 빈 값으로 확정할 뿐이고, 서비스는 error 를 503 으로 맵핑한다.
+    """
+
+    def handler(state: GraphState, error: NodeError) -> Command:
+        logger.error("노드 실패: %s", error.node, exc_info=error.error)
+        update = fallback(state) if callable(fallback) else dict(fallback)
+        return Command(update={**update, "error": str(error.error)})
+
+    return handler
+
+
+def _stopped(state: GraphState) -> bool:
+    """장애든 정상 조기 종료든 — 멈추기로 했으면 더 가지 않는다."""
+    return bool(state.get("error") or state.get("status"))
+
+
+def stop_or(next_node: str) -> Callable[[GraphState], str]:
+    """정지 신호가 없으면 next_node 로 — 극성 분기를 뺀 모든 엣지가 이 형태다."""
+
+    def route(state: GraphState) -> str:
+        return END if _stopped(state) else next_node
+
+    return route
+
+
+def route_after_plan(state: GraphState) -> str:
+    """유일한 분기 — 계획의 극성이 트랙을 고른다."""
+    if _stopped(state):
+        return END
+    return "expand_rivals" if state["plan"].polarity == "negative" else "expand_supply"
+
+
+def build_beneficiary_graph():
+    builder = StateGraph(GraphState)
+    builder.add_node(
+        "planner", build_plan,
+        retry_policy=DB_RETRY, timeout=LLM_TIMEOUT,  # DB 조회 후 LLM#1
+        error_handler=demote_to_error(
+            {"root_companies": [], "relation_lines": [], "plan": None}
+        ),
+    )
+    builder.add_node(
+        "expand_supply", expand_supply,
+        retry_policy=DB_RETRY, timeout=DB_TIMEOUT,
+        error_handler=demote_to_error({"edges": []}),
+    )
+    builder.add_node(
+        "filter_supply", filter_supply,
+        timeout=LLM_TIMEOUT,
+        error_handler=demote_to_error({"strong_ids": [], "weak_ids": []}),
+    )
+    builder.add_node(
+        "expand_rivals", expand_rivals,
+        retry_policy=DB_RETRY, timeout=DB_TIMEOUT,
+        error_handler=demote_to_error({"rivals": []}),
+    )
+    builder.add_node(
+        "filter_rivals", filter_rivals,
+        timeout=LLM_TIMEOUT,
+        error_handler=demote_to_error({"strong_ids": [], "weak_ids": []}),
+    )
+    builder.add_node(
+        "candidate_selector", select_candidates,
+        error_handler=demote_to_error({"candidates": []}),  # 순수 로직 — 재시도·타임아웃 없음
+    )
+    builder.add_node(
+        "finance_collector", collect_financials,
+        retry_policy=DB_RETRY, timeout=DB_TIMEOUT,
+        error_handler=demote_to_error({"candidates": []}),
+    )
+    builder.add_node(
+        "evaluator", evaluate,
+        timeout=LLM_TIMEOUT,
+        error_handler=demote_to_error(
+            lambda state: {"items": [], "pool_size": len(state.get("candidates", []))}
+        ),
+    )
+
+    builder.add_edge(START, "planner")
+    builder.add_conditional_edges(
+        "planner", route_after_plan,
+        ["expand_supply", "expand_rivals", END],
+    )
+    builder.add_conditional_edges(
+        "expand_supply", stop_or("filter_supply"), ["filter_supply", END]
+    )
+    builder.add_conditional_edges(
+        "expand_rivals", stop_or("filter_rivals"), ["filter_rivals", END]
+    )
+    builder.add_conditional_edges(
+        "filter_supply", stop_or("candidate_selector"), ["candidate_selector", END]
+    )
+    builder.add_conditional_edges(
+        "filter_rivals", stop_or("candidate_selector"), ["candidate_selector", END]
+    )
+    builder.add_conditional_edges(
+        "candidate_selector", stop_or("finance_collector"), ["finance_collector", END]
+    )
+    builder.add_conditional_edges(
+        "finance_collector", stop_or("evaluator"), ["evaluator", END]
+    )
+    builder.add_edge("evaluator", END)
+    return builder.compile()
+
+
+beneficiary_graph = build_beneficiary_graph()
