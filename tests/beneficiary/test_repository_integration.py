@@ -264,43 +264,6 @@ async def test_fetch_supply_neighbors_by_name(seed):
     assert rows[0]["object_name"] == seed["root_name"]
 
 
-async def test_fetch_theme_rivals_counts_shared_and_collects_items(seed):
-    rows = await repository.fetch_theme_rivals(
-        seed["root_name"], [seed["theme1"], seed["theme2"]],
-        exclude_names=[seed["root_name"], seed["partner_name"], seed["subsid_name"]],
-        exclude_tickers=[seed["root_ticker"], seed["partner_ticker"]],
-    )
-    # 자회사기업은 exclude_names 로 빠지고 경쟁사기업만 — 두 테마 공유
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["name"] == seed["rival_name"] and row["shared_themes"] == 2
-    assert row["market"] == "KOSPI"  # 노드 필드에서 온 시장 구분
-    assert set(row["via_themes"]) == {seed["theme1"], seed["theme2"]}
-    assert f"[{seed['theme1']}] 대체 생산 경쟁" in row["reasons"]  # 테마 귀속 보존
-    # 유출 간선(경쟁사→상대기업)의 아이템 배열들
-    flat = [item for arr in row["item_arrays"] if arr for item in arr]
-    assert set(flat) == {"HBM2", "DDR5"}
-
-
-async def test_fetch_theme_rivals_scopes_count_to_probe_themes(seed):
-    rows = await repository.fetch_theme_rivals(
-        seed["root_name"], [seed["theme2"]],
-        exclude_names=[seed["root_name"]], exclude_tickers=[],
-    )
-    by_name = {r["name"]: r for r in rows}
-    assert by_name[seed["rival_name"]]["shared_themes"] == 1  # probe 테마 안에서만 센다
-    assert seed["subsid_name"] not in by_name  # 테마2 미소속
-
-
-async def test_fetch_neighbor_names_covers_three_relation_types_both_directions(seed):
-    neighbors = await repository.fetch_neighbor_names([seed["root_name"]])
-    # 유입 SUPPLIES_TO(공급사·상대·비상장) + 유출 INVESTS_IN(자회사)
-    assert {seed["supplier_name"], seed["partner_name"], seed["subsid_name"],
-            f"비상장공급-{seed['uid']}"} <= neighbors
-    assert seed["rival_name"] not in neighbors  # 루트 기업와 직접 관계 없음
-    assert await repository.fetch_neighbor_names([]) == set()
-
-
 async def test_pg_party_evidence_and_valuation_queries(conn, seed):
     root_companies = await repository.fetch_root_companies(conn, seed["rep_news_id"])
     names = {a["name"] for a in root_companies}

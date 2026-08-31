@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from beneficiary.models import Candidate, SupplyChainCandidate, RivalCandidate
+from beneficiary.models import Candidate, SupplyChainCandidate
 from core import MARKETS
 from beneficiary.agent.state import GraphState
 
@@ -89,45 +89,9 @@ def select_supply_candidates(edges: list[SupplyChainCandidate]) -> list[Candidat
     return selected
 
 
-def _rival_sort_key(rival: RivalCandidate):
-    return (-rival.shared_themes, rival.ticker)
-
-
-def _build_rival_candidate(rival: RivalCandidate, promoted: bool) -> Candidate:
-    return Candidate(
-        ticker=rival.ticker, name=rival.name, company_id=rival.company_id,
-        track="rival", relation_lines=[f"공유 테마: {', '.join(rival.via_themes)}"],
-        matched_items=rival.supplied_items[:MATCHED_ITEMS_CAP],
-        relevance="weak" if promoted else "strong", promoted=promoted,
-        via_themes=rival.via_themes, reasons=rival.reasons,
-        market=rival.market,
-    )
-
-
-def select_rival_candidates(rivals: list[RivalCandidate]) -> list[Candidate]:
-    selected: list[Candidate] = []
-    for market in MARKETS:
-        base = sorted([r for r in rivals if r.market == market and r.relevance == "strong"],
-                      key=_rival_sort_key)
-        pool = [_build_rival_candidate(r, promoted=False) for r in base]
-        if len(pool) < QUOTA_PER_MARKET:
-            promotables = sorted(
-                [r for r in rivals if r.market == market and r.relevance == "weak"],
-                key=_rival_sort_key,
-            )
-            for rival in promotables:
-                if len(pool) >= POOL_PER_MARKET:
-                    break
-                pool.append(_build_rival_candidate(rival, promoted=True))
-        selected.extend(pool[:POOL_PER_MARKET])
-    return selected
-
-
 async def select_candidates(state: GraphState) -> dict:
     if state.get("edges"):
         candidates = select_supply_candidates(state["edges"])
-    elif state.get("rivals"):
-        candidates = select_rival_candidates(state["rivals"])
     else:
         candidates = []
     logger.info("후보 확정: %d개", len(candidates))

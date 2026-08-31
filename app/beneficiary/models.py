@@ -12,7 +12,7 @@ class NewsContext:
     title: str
     summary: str | None
     published_at: str | None
-    link: str | None = None  # 악재 트랙의 트리거 뉴스 근거
+    link: str | None = None  # 트리거 뉴스 근거
 
 
 @dataclass
@@ -62,23 +62,6 @@ class SupplyChainCandidate:
 
 
 @dataclass
-class RivalCandidate:
-    """악재 트랙 원시 후보 — 테마 겹침 경쟁사 (probe 간 티커 병합 후 1건)."""
-
-    kid: str | None  # 병합·절단 후 부여되는 kNN
-    subject_name: str  # 최대 shared_themes 를 준 probe 의 루트 기업
-    ticker: str
-    name: str
-    company_id: int | None
-    market: str | None = None
-    shared_themes: int = 0
-    via_themes: list[str] = field(default_factory=list)  # 상한 5
-    reasons: list[str] = field(default_factory=list)  # 테마 편입 사유, 상한 3
-    supplied_items: list[str] = field(default_factory=list)  # 유출 간선 아이템, 상한 10
-    relevance: str | None = None
-
-
-@dataclass
 class Evidence:
     type: str  # disclosure | news | theme
     text: str
@@ -95,7 +78,7 @@ class Candidate:
     ticker: str
     name: str
     company_id: int | None
-    track: Literal["supply", "rival"]
+    track: Literal["supply"]
     relation_lines: list[str] = field(default_factory=list)
     evidence: list[Evidence] = field(default_factory=list)
     matched_items: list[str] = field(default_factory=list)  # 상한 5
@@ -133,16 +116,10 @@ class RankedItem:
 # ── LLM 구조화 출력 ──────────────────────────────────────────────────────────
 
 
-class RivalProbe(BaseModel):
-    subject_name: str = Field(description="제시된 상장 루트 기업 목록 안의 정규명 그대로")
-    themes: list[str] = Field(default=[], description="그 루트 기업의 테마 목록 안에서 사건 관련 1~3개")
-
-
 class NewsPlan(BaseModel):
     event_summary: str = Field(description="사건 해석 1~2문장, 한국어")
     polarity: Literal["positive", "negative"]
     core_items: list[str] = Field(default=[], description="뉴스에 실제 등장한 품목·기술 명사구 1~5개")
-    rival_probes: list[RivalProbe] = Field(default=[], description="negative 일 때만 채운다")
 
 
 class FilterOutput(BaseModel):

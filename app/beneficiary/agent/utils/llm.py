@@ -1,7 +1,7 @@
-"""beneficiary Bedrock 호출 계층 — LCEL 체인 4개.
+"""beneficiary Bedrock 호출 계층 — LCEL 체인 3개.
 
 - 체인 형태: ChatPromptTemplate | Chat.with_structured_output(pydantic).with_retry()
-- 실행당 LLM 호출은 3회: plan → filter(supply 또는 rivals) → evaluate.
+- 실행당 LLM 호출은 3회: plan → filter_supply → evaluate.
   체인 조립은 lru_cache 로 프로세스당 1회다.
 - 노드는 이 모듈을 `from beneficiary.agent.utils import llm` 으로 들고 다닌다 —
   테스트가 모듈 속성을 monkeypatch 하는 시임(seam)이다. 그래서 체인을 그대로
@@ -24,7 +24,6 @@ from beneficiary.models import EvaluatorOutput, FilterOutput, NewsPlan
 from beneficiary.agent.prompts import (
     EVALUATOR_SYSTEM,
     NEWS_PLAN_SYSTEM,
-    RIVAL_FILTER_SYSTEM,
     SUPPLY_FILTER_SYSTEM,
 )
 from core.config import settings
@@ -90,11 +89,6 @@ def _supply_filter_chain() -> Runnable:
 
 
 @lru_cache
-def _rival_filter_chain() -> Runnable:
-    return _chain(RIVAL_FILTER_SYSTEM, FilterOutput, _light_chat(0.0), "filter_rivals")
-
-
-@lru_cache
 def _evaluator_chain() -> Runnable:
     chat = _chat(settings.bedrock_evaluator_model, 0.1, MAX_OUTPUT_TOKENS_EVALUATOR)
     return _chain(EVALUATOR_SYSTEM, EvaluatorOutput, chat, "evaluate_beneficiary")
@@ -106,10 +100,6 @@ async def plan_news(prompt: str) -> NewsPlan:
 
 async def filter_supply(prompt: str) -> FilterOutput:
     return await _supply_filter_chain().ainvoke({"context": prompt})
-
-
-async def filter_rivals(prompt: str) -> FilterOutput:
-    return await _rival_filter_chain().ainvoke({"context": prompt})
 
 
 async def evaluate_beneficiary(prompt: str) -> EvaluatorOutput:

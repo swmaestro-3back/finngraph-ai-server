@@ -9,25 +9,19 @@ from __future__ import annotations
 from langgraph.errors import NodeError
 from langgraph.graph import END
 
-from beneficiary.models import NewsPlan, RivalProbe
 from beneficiary.agent.workflow import (
     beneficiary_graph,
     demote_to_error,
-    route_after_plan,
     stop_or,
 )
 
-POSITIVE = NewsPlan(event_summary="s", polarity="positive", core_items=["HBM"])
-NEGATIVE = NewsPlan(event_summary="s", polarity="negative", core_items=["HBM"],
-                    rival_probes=[RivalProbe(subject_name="루트 기업", themes=["테마A"])])
 
-
-def test_topology_is_flat_and_starts_at_analyze():
+def test_topology_is_flat_and_starts_at_planner():
     drawable = beneficiary_graph.get_graph()
-    # 트랙 노드는 서브그래프가 아니라 단일 그래프의 노드다
     assert {"planner", "expand_supply", "filter_supply",
-            "expand_rivals", "filter_rivals", "candidate_selector",
-            "finance_collector", "evaluator"} <= set(drawable.nodes)
+            "candidate_selector", "finance_collector", "evaluator"} == {
+        n for n in drawable.nodes if not n.startswith("__")
+    }
     from_start = {edge.target for edge in drawable.edges if edge.source == "__start__"}
     assert from_start == {"planner"}
 
@@ -36,21 +30,8 @@ def test_every_node_can_exit_early():
     # 정지 신호는 어느 노드에서든 END 로 나갈 수 있어야 한다 (evaluator 는 종점).
     targets = {edge.source for edge in beneficiary_graph.get_graph().edges
                if edge.target == "__end__"}
-    assert {"planner", "expand_supply", "filter_supply", "expand_rivals",
-            "filter_rivals", "candidate_selector", "finance_collector",
-            "evaluator"} <= targets
-
-
-def test_route_after_plan_picks_track_by_polarity():
-    assert route_after_plan({"plan": POSITIVE}) == "expand_supply"
-    assert route_after_plan({"plan": NEGATIVE}) == "expand_rivals"
-
-
-def test_route_after_plan_stops_on_error_or_status():
-    assert route_after_plan({"error": "boom", "plan": POSITIVE}) == END
-    # 루트 기업 0명·유효 probe 0 은 노드가 status 로 알린다 — 라우터는 그것만 본다
-    assert route_after_plan({"status": "no_root_companies", "plan": None}) == END
-    assert route_after_plan({"status": "no_pool", "plan": NEGATIVE}) == END
+    assert {"planner", "expand_supply", "filter_supply",
+            "candidate_selector", "finance_collector", "evaluator"} <= targets
 
 
 def test_stop_or_passes_through_only_when_not_stopped():
@@ -63,8 +44,8 @@ def test_stop_or_passes_through_only_when_not_stopped():
 def test_every_node_registers_an_error_handler():
     # 예외는 그래프 밖으로 나가지 않는다 — 노드 하나라도 빠지면 500 이 샌다.
     nodes = beneficiary_graph.nodes
-    for name in ("planner", "expand_supply", "filter_supply", "expand_rivals",
-                 "filter_rivals", "candidate_selector", "finance_collector", "evaluator"):
+    for name in ("planner", "expand_supply", "filter_supply",
+                 "candidate_selector", "finance_collector", "evaluator"):
         assert nodes[name].error_handler_node, f"{name} 에 error_handler 가 없다"
 
 

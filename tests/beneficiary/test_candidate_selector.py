@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from beneficiary.models import SupplyChainCandidate, RivalCandidate
-from beneficiary.agent.nodes.candidate_selector import select_rival_candidates, select_supply_candidates
+from beneficiary.models import SupplyChainCandidate
+from beneficiary.agent.nodes.candidate_selector import select_supply_candidates
 
 
 def _edge(gid, ticker, market, relevance, dc=1, nc=0, items=("HBM",), name=None):
@@ -69,23 +69,3 @@ def test_market_zero_still_proceeds():
     edges = [_edge("g01", "000001", "KOSPI", "strong")]
     candidates = select_supply_candidates(edges)
     assert len(candidates) == 1  # KOSDAQ 0개여도 진행 (caveats 는 evaluator 소관)
-
-
-def test_rival_selection_orders_by_shared_then_ticker():
-    def rival(kid, ticker, market, relevance, shared=1):
-        return RivalCandidate(kid=kid, subject_name="루트 기업", ticker=ticker, name=kid,
-                              company_id=1, market=market,
-                              shared_themes=shared, via_themes=["테마A"],
-                              supplied_items=["HBM2"], relevance=relevance)
-    rivals = [rival("k01", "000001", "KOSPI", "strong", shared=1),
-              rival("k02", "000002", "KOSPI", "strong", shared=3),
-              rival("k03", "000003", "KOSDAQ", "weak", shared=2),
-              rival("k04", "000004", "KOSDAQ", "weak", shared=2)]
-    candidates = select_rival_candidates(rivals)
-    kospi = [c.ticker for c in candidates if c.market == "KOSPI"]
-    kosdaq = [(c.ticker, c.promoted) for c in candidates if c.market == "KOSDAQ"]
-    assert kospi == ["000002", "000001"]  # shared desc
-    assert kosdaq == [("000003", True), ("000004", True)]  # shared 동점 → ticker asc
-    assert candidates[0].track == "rival"
-    assert candidates[0].matched_items == ["HBM2"]
-    assert candidates[0].relation_lines == ["공유 테마: 테마A"]

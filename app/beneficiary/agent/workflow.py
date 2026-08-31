@@ -1,14 +1,12 @@
-"""beneficiary compiled graph 조립 — 극성 분기를 가진 단일 그래프.
+"""beneficiary compiled graph 조립 — 호재 단일 선형 트랙.
 
-START → planner ─(장애/데이터 없음)─→ END
-   ├─(positive)→ expand_supply → filter_supply ─┐
-   └─(negative)→ expand_rivals → filter_rivals ─┤
-                                                ▼
-   candidate_selector → finance_collector → evaluator → END
+START → planner ─(장애/데이터 없음/악재)─→ END
+   → expand_supply → filter_supply
+   → candidate_selector → finance_collector → evaluator → END
 
 정지 규칙은 하나다 — 상태에 error(장애) 나 status(정상 조기 종료) 가 들어오면
-그 다음 라우터가 END 로 보낸다. 그래서 분기다운 분기는 극성을 고르는
-route_after_plan 하나뿐이고 나머지 엣지는 전부 stop_or 다.
+그 다음 라우터가 END 로 보낸다. planner 는 극성 게이트에서 악재를
+not_positive 로 status 에 넣으므로, 나머지 엣지는 전부 stop_or 로 충분하다.
 조건부 엣지는 순수 라우팅만 한다(상태 변경 금지).
 
 status 는 노드가 직접 넣는다(더 갈 곳이 없다는 정상 판단). error 는 노드가
@@ -35,9 +33,7 @@ from beneficiary.agent.nodes import (
     build_plan,
     collect_financials,
     evaluate,
-    expand_rivals,
     expand_supply,
-    filter_rivals,
     filter_supply,
     select_candidates,
 )
@@ -89,13 +85,6 @@ def stop_or(next_node: str) -> Callable[[GraphState], str]:
     return route
 
 
-def route_after_plan(state: GraphState) -> str:
-    """유일한 분기 — 계획의 극성이 트랙을 고른다."""
-    if _stopped(state):
-        return END
-    return "expand_rivals" if state["plan"].polarity == "negative" else "expand_supply"
-
-
 def build_beneficiary_graph():
     builder = StateGraph(GraphState)
     builder.add_node(
@@ -112,16 +101,6 @@ def build_beneficiary_graph():
     )
     builder.add_node(
         "filter_supply", filter_supply,
-        timeout=LLM_TIMEOUT,
-        error_handler=demote_to_error({"strong_ids": [], "weak_ids": []}),
-    )
-    builder.add_node(
-        "expand_rivals", expand_rivals,
-        retry_policy=DB_RETRY, timeout=DB_TIMEOUT,
-        error_handler=demote_to_error({"rivals": []}),
-    )
-    builder.add_node(
-        "filter_rivals", filter_rivals,
         timeout=LLM_TIMEOUT,
         error_handler=demote_to_error({"strong_ids": [], "weak_ids": []}),
     )
@@ -144,20 +123,13 @@ def build_beneficiary_graph():
 
     builder.add_edge(START, "planner")
     builder.add_conditional_edges(
-        "planner", route_after_plan,
-        ["expand_supply", "expand_rivals", END],
+        "planner", stop_or("expand_supply"), ["expand_supply", END]
     )
     builder.add_conditional_edges(
         "expand_supply", stop_or("filter_supply"), ["filter_supply", END]
     )
     builder.add_conditional_edges(
-        "expand_rivals", stop_or("filter_rivals"), ["filter_rivals", END]
-    )
-    builder.add_conditional_edges(
         "filter_supply", stop_or("candidate_selector"), ["candidate_selector", END]
-    )
-    builder.add_conditional_edges(
-        "filter_rivals", stop_or("candidate_selector"), ["candidate_selector", END]
     )
     builder.add_conditional_edges(
         "candidate_selector", stop_or("finance_collector"), ["finance_collector", END]

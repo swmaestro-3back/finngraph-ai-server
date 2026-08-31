@@ -1,4 +1,4 @@
-"""planner 노드 (LLM#1) — 뉴스 → 계획(극성·핵심 아이템·rival probe).
+"""planner 노드 (LLM#1) — 뉴스 → 계획(극성·핵심 아이템).
 
 실패 구분(스펙 §4.1/§9): DB·LLM 실패는 예외로 올려보내고 그래프가
 error 로 강등한다(workflow 의 error_handler → END → 503). 데이터가 없어 더
@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 
 from beneficiary import repository
-from beneficiary.models import RootCompany, NewsPlan, RivalProbe
+from beneficiary.models import RootCompany, NewsPlan
 from beneficiary.agent.state import GraphState
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.packer import pack_plan_context
@@ -48,25 +48,9 @@ def to_root_companies(rows: list[dict]) -> list[RootCompany]:
     ]
 
 def sanitize_plan(plan: NewsPlan, themes_by_root: dict[str, list[dict]]) -> NewsPlan:
-    """LLM 출력 재강제 — 목록 밖 subject/theme 폐기, dedup, positive 는 probe 제거."""
-
+    """LLM 출력 재강제 — 목록 밖 항목 폐기, dedup."""
     core_items = list(dict.fromkeys(item for item in plan.core_items if item))[:CORE_ITEMS_CAP]
-
-    probes: list[RivalProbe] = []
-    if plan.polarity == "negative":
-        seen_subjects: set[str] = set()
-        for probe in plan.rival_probes:
-            themes = themes_by_root.get(probe.subject_name)
-            if themes is None or probe.subject_name in seen_subjects:
-                continue
-            valid_names = {theme["name"] for theme in themes}
-            picked = list(dict.fromkeys(t for t in probe.themes if t in valid_names))[:3]
-            if not picked:
-                continue
-            seen_subjects.add(probe.subject_name)
-            probes.append(RivalProbe(subject_name=probe.subject_name, themes=picked))
-
-    return plan.model_copy(update={"core_items": core_items, "rival_probes": probes})
+    return plan.model_copy(update={"core_items": core_items})
 
 
 async def build_plan(state: GraphState) -> dict:
@@ -96,9 +80,8 @@ async def build_plan(state: GraphState) -> dict:
     )
 
     result = {"root_companies": root_companies, "relation_lines": relation_lines, "plan": plan}
-    # 악재인데 유효 probe 0 — LLM 이 목록 밖 이름을 냈거나 테마 자체가 없다.
-    # 어느 쪽이든 탐색할 경쟁사 축이 없으므로 여기서 끝낸다.
-    if plan.polarity == "negative" and not plan.rival_probes:
-        result |= {"status": "no_pool",
-                   "reason": "악재의 반사이익을 볼 경쟁사를 탐색할 공유 테마가 없습니다."}
+    # 극성 게이트 — 상류 오분류 방어선. 악재에 수혜주를 추천하지 않는다.
+    if plan.polarity != "positive":
+        result |= {"status": "not_positive",
+                   "reason": "호재로 보기 어려운 뉴스입니다 — 수혜 분석 대상이 아닙니다."}
     return result

@@ -11,13 +11,12 @@ from beneficiary.models import (
     FilterOutput,
     EvaluatorInsight,
     NewsPlan,
-    RivalCandidate,
 )
 
 
 def test_news_plan_forces_binary_polarity():
     plan = NewsPlan(event_summary="s", polarity="negative")
-    assert plan.core_items == [] and plan.rival_probes == []
+    assert plan.core_items == []
     with pytest.raises(ValidationError):
         NewsPlan(event_summary="s", polarity="mixed")
 
@@ -41,5 +40,3 @@ def test_candidate_defaults():
     e = SupplyChainCandidate(gid=None, root_name="a", subject_name="s", object_name="o",
                       ticker="000002", name="공급사", company_id=2)
     assert e.relevance is None and e.disclosure_items == []
-    r = RivalCandidate(kid=None, subject_name="a", ticker="000003", name="경쟁사", company_id=3)
-    assert r.relevance is None and r.supplied_items == []

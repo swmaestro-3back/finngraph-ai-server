@@ -2,7 +2,6 @@
 
 strong_ids/weak_ids 는 관측·테스트 전용 요약(LangSmith 트레이스 가독성)이다 —
 분류의 원천은 후보 객체의 relevance 이며 다운스트림 로직은 이 키를 읽지 않는다.
-edges/rivals 는 실행 경로(극성 트랙)당 한쪽만 채워진다.
 
 종료 신호는 둘뿐이다 — error 는 장애(→ 503), status 는 정상 종료다. 노드는
 더 진행할 수 없다고 판단하면 그 자리에서 status·reason 을 넣고 반환하고,
@@ -21,7 +20,6 @@ from beneficiary.models import (
     NewsPlan,
     RankedItem,
     RelationLine,
-    RivalCandidate,
 )
 
 
@@ -39,7 +37,6 @@ class GraphState(TypedDict, total=False):
 
     # 트랙별 원시 후보
     edges: list[SupplyChainCandidate]
-    rivals: list[RivalCandidate]
 
     # filter_*
     strong_ids: list[str]
@@ -53,8 +50,8 @@ class GraphState(TypedDict, total=False):
     pool_size: int
     event_interpretation: str | None
 
-    # 종료 신호 — status 는 ok | no_root_companies | no_pool | no_candidates |
-    # no_beneficiaries, reason 은 그 사유를 설명하는 사용자용 한 문장이다.
+    # 종료 신호 — status 는 ok | not_positive | no_root_companies | no_pool |
+    # no_candidates | no_beneficiaries, reason 은 그 사유를 설명하는 사용자용 한 문장이다.
     status: str
     reason: str | None
     error: str | None

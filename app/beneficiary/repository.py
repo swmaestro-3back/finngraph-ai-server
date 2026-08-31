@@ -24,7 +24,6 @@ from beneficiary.models import RelationLine
 from core import MARKETS, NodeLabel, RelationshipType, neo4j_client
 
 THEMES_PER_ROOT = 30  # 루트 기업당 테마 상한 — 멤버 수 오름차순(구체 테마 우선) 절단
-RIVALS_PER_PROBE = 30  # probe당 경쟁사 후보 상한
 
 
 async def _fetch_all(conn: AsyncConnection, query: str, params: Any = None) -> list[dict]:
@@ -45,7 +44,7 @@ async def _fetch_one(conn: AsyncConnection, query: str, params: Any = None) -> d
 async def resolve_news_with_link(conn: AsyncConnection, news_id: int) -> dict | None:
     """클러스터 대표로 정규화한 뉴스 컨텍스트 + 원문 링크 (없으면 None).
 
-    link 는 악재 트랙에서 트리거 뉴스 자체를 근거로 실을 때 쓴다.
+    link 는 트리거 뉴스 자체를 근거로 실을 때 쓴다.
     """
 
     return await _fetch_one(
@@ -131,67 +130,6 @@ RETURN n.ticker AS ticker, n.name AS name, n.company_id AS company_id,
          "exclude_tickers": exclude_tickers, "exclude_names": exclude_names},
     )
     return [dict(record) for record in records]
-
-
-async def fetch_theme_rivals(
-    subject_name: str, themes: list[str], exclude_names: list[str], exclude_tickers: list[str]
-) -> list[dict]:
-    """루트 기업와 probe 테마를 공유하는 활성 KOSPI/KOSDAQ 경쟁사 후보 + 유출 공급 아이템.
-
-    시장·상장 판정은 노드 필드(market·is_active)로 여기서 끝낸다 — 그래야
-    probe당 LIMIT 30 슬롯이 전부 유효 시장 후보로 채워진다.
-
-    겹침(shared_themes)은 probe 의 핵심 테마 안에서만 센다 — 전체 테마로 세면
-    대기업은 무관한 대형주끼리 겹침이 쏠린다(스펙 §4.4). reasons 는 쿼리에서
-    "[테마명] 편입 사유" 형태로 만들어 테마 귀속을 보존한다(스펙 §4.7 근거
-    형식 — reason 이 NULL 인 간선은 문자열 연결이 NULL 이 되어 collect 에서
-    자연 탈락).
-    """
-
-    query = cast(LiteralString, f"""
-MATCH (a:{NodeLabel.COMPANY} {{name: $subject_name}})-[:{RelationshipType.BELONGS_TO}]->(t:{NodeLabel.THEME})
-WHERE t.name IN $themes
-MATCH (t)<-[b:{RelationshipType.BELONGS_TO}]-(c:{NodeLabel.COMPANY})
-WHERE c.ticker IS NOT NULL
-  AND c.market IN $markets
-  AND c.is_active = true
-  AND NOT c.name IN $exclude_names AND NOT c.ticker IN $exclude_tickers
-WITH c, count(DISTINCT t) AS shared_themes,
-     collect(DISTINCT t.name) AS via_themes,
-     collect(DISTINCT ('[' + t.name + '] ' + b.reason))[..3] AS reasons
-ORDER BY shared_themes DESC, c.ticker
-LIMIT {RIVALS_PER_PROBE}
-OPTIONAL MATCH (c)-[s:{RelationshipType.SUPPLIES_TO}]->()
-WITH c, shared_themes, via_themes, reasons,
-     collect(s.disclosure_items) + collect(s.news_items) AS item_arrays
-RETURN c.ticker AS ticker, c.name AS name, c.company_id AS company_id,
-       c.market AS market,
-       shared_themes, via_themes, reasons, item_arrays
-""")
-    records = await neo4j_client.execute(
-        query,
-        {"subject_name": subject_name, "themes": themes, "markets": list(MARKETS),
-         "exclude_names": exclude_names, "exclude_tickers": exclude_tickers},
-    )
-    return [dict(record) for record in records]
-
-
-async def fetch_neighbor_names(names: list[str]) -> set[str]:
-    """대상 기업들의 SUPPLIES_TO·INVESTS_IN·ACQUIRES 양방향 1-hop 이웃 name 합집합.
-
-    악재 트랙 제외 집합 — 밸류체인(공급망)뿐 아니라 지분 관계(자회사·계열)도
-    배제해 루트 기업의 자회사가 "반사이익 경쟁사"로 추천되는 것을 차단한다.
-    """
-
-    if not names:
-        return set()
-    query = cast(LiteralString, f"""
-MATCH (a:{NodeLabel.COMPANY}) WHERE a.name IN $names
-MATCH (a)-[:{RelationshipType.SUPPLIES_TO}|{RelationshipType.INVESTS_IN}|{RelationshipType.ACQUIRES}]-(n:{NodeLabel.COMPANY})
-RETURN DISTINCT n.name AS name
-""")
-    records = await neo4j_client.execute(query, {"names": names})
-    return {record["name"] for record in records}
 
 
 # ── PG — 당사자·시세·근거·재무 ──────────────────────────────────────────────

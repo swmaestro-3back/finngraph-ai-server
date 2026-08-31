@@ -10,12 +10,10 @@ from beneficiary.models import (
     NewsContext,
     NewsPlan,
     RelationLine,
-    RivalCandidate,
 )
 from beneficiary.agent.utils.packer import (
     pack_evaluator_context,
     pack_plan_context,
-    pack_rival_filter_context,
     pack_supply_filter_context,
 )
 
@@ -45,17 +43,6 @@ def test_pack_supply_filter_lines_show_items_or_placeholder():
     prompt = pack_supply_filter_context(PLAN, [_edge(), _edge(gid="g02", items=())])
     assert "[g01]" in prompt and "HBM" in prompt and "공시2·뉴스5" in prompt
     assert "items: (없음)" in prompt  # 빈 아이템 간선 표기
-
-
-def test_pack_rival_filter_cards():
-    rival = RivalCandidate(kid="k01", subject_name="루트기업", ticker="000003", name="경쟁사",
-                           company_id=3, market="KOSPI", shared_themes=2,
-                           via_themes=["테마A", "테마B"], reasons=["대체 생산"],
-                           supplied_items=["HBM2"])
-    empty = RivalCandidate(kid="k02", subject_name="루트기업", ticker="000004", name="무보", company_id=4)
-    prompt = pack_rival_filter_context(PLAN, [rival, empty])
-    assert "[k01]" in prompt and "공유 테마 2" in prompt and "HBM2" in prompt and "대체 생산" in prompt
-    assert "공급 아이템: (없음)" in prompt
 
 
 def test_pack_judge_assigns_scoped_eids_and_marks_promotion():
