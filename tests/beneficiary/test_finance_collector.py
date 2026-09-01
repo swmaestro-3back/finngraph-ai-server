@@ -79,8 +79,8 @@ async def test_supply_candidate_with_zero_affirmed_evidence_is_dropped(monkeypat
     assert result["candidates"] == [] and "error" not in result  # 규칙 제거 (노드 실패 아님)
 
 
-async def test_rival_candidate_gets_news_and_theme_evidence():
-    candidate = Candidate(ticker="000003", name="경쟁사", company_id=3, track="rival",
+async def test_theme_candidate_gets_news_and_theme_evidence():
+    candidate = Candidate(ticker="000003", name="수혜사", company_id=3, track="theme",
                           market="KOSPI", matched_themes=["테마A"],
                           matched_reasons=["대체 생산 경쟁", "동일 제품"])
     result = await collector_module.collect_financials({"news": NEWS, "candidates": [candidate]})
@@ -89,3 +89,49 @@ async def test_rival_candidate_gets_news_and_theme_evidence():
     assert types == ["news", "theme", "theme"]
     assert kept.evidence[0].link == "https://n.example/1"  # 트리거 뉴스 근거
     assert "대체 생산 경쟁" in kept.evidence[1].text and kept.evidence[1].link is None
+
+
+async def test_both_candidate_survives_without_supply_evidence(monkeypatch):
+    """both 후보는 공시 근거가 없어도 테마 근거로 살아남는다."""
+    candidate = Candidate(
+        ticker="000001", name="회사", company_id=1, track="both",
+        matched_reasons=["[테마A] 변압기 주력"], market="KOSPI",
+        source_edges=[_edge("g01", "간선1")],
+    )
+
+    async def empty_evidence(conn, subject, relation, obj, limit=3):
+        return []
+
+    monkeypatch.setattr(repository, "fetch_edge_evidence", empty_evidence)
+
+    result = await collector_module.collect_financials(
+        {"news": NEWS, "candidates": [candidate]}
+    )
+
+    assert len(result["candidates"]) == 1
+    types = {e.type for e in result["candidates"][0].evidence}
+    assert "theme" in types
+
+
+async def test_both_candidate_loads_supply_and_theme_evidence(monkeypatch):
+    """both 후보는 공급망 축과 테마 축 근거를 모두 적재한다 (한쪽만이 아니다)."""
+    async def fake_evidence(conn, subject, relation, obj, limit=3):
+        return [{"id": 1, "source_type": "disclosure", "evidence": "공시내용",
+                 "item": None, "mentioned_at": "2026-08-01", "rcept_no": None,
+                 "link": "https://l"}]
+
+    monkeypatch.setattr(repository, "fetch_edge_evidence", fake_evidence)
+
+    candidate = Candidate(
+        ticker="000004", name="회사4", company_id=4, track="both",
+        matched_reasons=["[테마A] 변압기 주력"], market="KOSPI",
+        source_edges=[_edge("g01", "간선1")],
+    )
+
+    result = await collector_module.collect_financials({"news": NEWS, "candidates": [candidate]})
+
+    kept = result["candidates"][0]
+    types = {e.type for e in kept.evidence}
+    assert "disclosure" in types  # 공급망 축
+    assert "theme" in types  # 테마 축
+    assert "news" in types  # 트리거 호재 뉴스

@@ -57,13 +57,13 @@ async def _load_supply_evidence(conn, candidate: Candidate) -> None:
             ))
 
 
-def _load_rival_evidence(candidate: Candidate, news) -> None:
-    # ① 트리거 원 뉴스 — 반사이익의 사건 근거는 루트 기업의 악재 그 자체.
+def _load_theme_evidence(candidate: Candidate, news) -> None:
+    # ① 트리거 원 뉴스 — 수혜 시나리오의 사건 근거는 트리거 호재 뉴스 그 자체.
     candidate.evidence.append(Evidence(
         type="news", text=news.title, date=news.published_at, link=news.link,
     ))
-    # ② 테마 편입 사유 — 링크 없는 그래프 유래 근거. reason 은 fetch_theme_rivals
-    #    가 "[테마명] 사유" 형태로 만들어 테마 귀속이 보존된다(스펙 §4.7 형식).
+    # ② 테마 편입 사유 — 링크 없는 그래프 유래 근거. expand_theme 이 "[테마명] 사유"
+    #    형태로 조립해 테마 귀속이 보존된다(스펙 §5.5).
     for reason in candidate.matched_reasons:
         candidate.evidence.append(Evidence(type="theme", text=reason))
 
@@ -73,13 +73,15 @@ async def collect_financials(state: GraphState) -> dict:
     kept: list[Candidate] = []
     async with postgres_client.connection() as conn:
         for candidate in state["candidates"]:
-            if candidate.track == "supply":
+            if candidate.track in ("supply", "both"):
                 await _load_supply_evidence(conn, candidate)
-                if not candidate.evidence:
-                    logger.info("affirmed 근거 0건 후보 제거: %s", candidate.ticker)
-                    continue
-            else:
-                _load_rival_evidence(candidate, news)
+            if candidate.track in ("theme", "both"):
+                _load_theme_evidence(candidate, news)
+            # 두 축 모두 빈손일 때만 제거한다 — both 후보가 공시 근거 부재로
+            # 탈락하면 테마 근거를 가진 채 사라진다.
+            if not candidate.evidence:
+                logger.info("인용 가능한 근거 0건 후보 제거: %s", candidate.ticker)
+                continue
 
             if candidate.company_id is not None:
                 candidate.financials = [
