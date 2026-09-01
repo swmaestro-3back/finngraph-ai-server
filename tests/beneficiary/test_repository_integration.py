@@ -269,31 +269,61 @@ async def test_pg_party_evidence_and_valuation_queries(conn, seed):
 
 
 @pytest_asyncio.fixture
-async def neo4j_conn():
-    """search_theme_reasons 테스트 전용 접속 — seed 픽스처와 달리 데이터를 심지
-    않고 실제 그래프(시드된 로컬 인덱스)를 그대로 조회하므로 연결만 잡는다."""
+async def two_reason_vectors(seed):
+    """search_theme_reasons 정렬·필터 검증 전용 픽스처.
 
-    await neo4j_client.connect()
-    yield
-    await neo4j_client.close()
+    실 벌크 데이터는 Company.is_active 가 비어 있어(Task 6 보고서 참고 —
+    finngraph-etl 쪽 데이터 갭) 상장 필터를 하나도 통과하지 못해, 실 그래프를
+    그대로 조회하는 버전은 결과가 항상 비어 모든 assert 가 공허하게 참이
+    됐다. seed 의 root·rival 두 기업의 theme1 편입 사유에 서로 다른 실
+    Titan 임베딩을 심어(주제가 달라 점수가 실제로 벌어진다 — 관측
+    0.9999 vs 0.7496) ORDER BY 가 진짜로 검증되게 한다.
+    """
+
+    from beneficiary.agent.utils import embed
+
+    text_root = f"초고압 변압기 및 전력기기 전문 제조 {seed['uid']}"
+    text_rival = f"태양광 인버터 및 전력변환장치 전문 제조 {seed['uid']}"
+    vector_root, vector_rival = await embed.embed_queries([text_root, text_rival])
+    await neo4j_client.execute(
+        """
+MATCH (c:Company {name: $name})-[b:BELONGS_TO]->(t:Theme {name: $theme})
+SET b.reason = $reason, b.reason_embedding = $embedding
+""",
+        {"name": seed["root_name"], "theme": seed["theme1"],
+         "reason": text_root, "embedding": vector_root},
+    )
+    await neo4j_client.execute(
+        """
+MATCH (c:Company {name: $name})-[b:BELONGS_TO]->(t:Theme {name: $theme})
+SET b.reason = $reason, b.reason_embedding = $embedding
+""",
+        {"name": seed["rival_name"], "theme": seed["theme1"],
+         "reason": text_rival, "embedding": vector_rival},
+    )
+    return vector_root
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_search_theme_reasons_returns_listed_domestic_only(neo4j_conn):
-    from beneficiary.agent.utils import embed
-
-    vector = (await embed.embed_queries(["변압기 초고압 전력기기"]))[0]
+async def test_search_theme_reasons_returns_listed_domestic_only(seed, two_reason_vectors):
+    # min_score=0.6: root(~0.9999)·rival(~0.7496) 둘 다 통과하면서, 두 값이 실제로
+    # 다르므로 ORDER BY score DESC 검증이 "빈 리스트라 항상 참"이 아니라 진짜로
+    # 순서를 강제한다. 질의 벡터가 root 사유와 동일 텍스트에서 나왔으므로
+    # root 가 반드시 1위여야 한다.
     rows = await repository.search_theme_reasons(
-        query_vector=vector, exclude_names=[], exclude_tickers=[],
-        min_score=0.0, limit=10, over_fetch=50,
+        query_vector=two_reason_vectors, exclude_names=[], exclude_tickers=[],
+        min_score=0.6, limit=10, over_fetch=50,
     )
 
+    assert {row["ticker"] for row in rows} == {seed["root_ticker"], seed["rival_ticker"]}
     assert all(row["ticker"] for row in rows)
     assert all(row["market"] in ("KOSPI", "KOSDAQ") for row in rows)
     assert all(row["reason"] for row in rows)
-    # ORDER BY score DESC 가 보존되는지
+    # ORDER BY score DESC 가 보존되는지 — 두 행의 점수가 실제로 달라야 의미있다
+    assert rows[0]["score"] > rows[1]["score"]
     assert rows == sorted(rows, key=lambda r: -r["score"])
+    assert rows[0]["ticker"] == seed["root_ticker"]  # 질의와 동일 텍스트라 1위 고정
 
 
 @pytest_asyncio.fixture

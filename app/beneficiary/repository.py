@@ -130,7 +130,9 @@ async def search_theme_reasons(
     필터가 뒤에서 깎으므로 over_fetch 로 과다 조회해야 limit 슬롯이 채워진다.
     (fetch_supply_neighbors_by_name 과 달리 필터를 앞단으로 밀 수 없다.)
 
-    인덱스 이름은 LiteralString 제약 때문에 파라미터로 넘긴다.
+    인덱스 이름은 enum 상수가 아니라 settings 값이다 — 모듈 불변식(보간은
+    enum 상수만, 그 외 값은 전부 $parameter)에 따라 문자열로 보간하지 않고
+    파라미터로 넘긴다.
     """
 
     query = cast(LiteralString, f"""
