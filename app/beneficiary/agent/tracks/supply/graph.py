@@ -52,13 +52,17 @@ async def _expand(state: SupplyTrackState) -> dict:
     if not result.get("edges"):
         return result | {"outcome": TrackOutcome(
             status="no_pool",
-            reason="루트 기업에 공급하는 상장 기업을 그래프에서 찾지 못했습니다.",
+            reason="루트 기업에 납품하는 상장 공급사를 그래프에서 찾지 못했습니다.",
         )}
     return result
 
 
 async def _filter(state: SupplyTrackState) -> dict:
     result = await nodes.filter_supply(state)
+    status = result.pop("status", None)
+    reason = result.pop("reason", None)
+    if status:
+        return result | {"outcome": TrackOutcome(status=status, reason=reason)}
     return result | {"outcome": state.get("outcome") or TrackOutcome()}
 
 

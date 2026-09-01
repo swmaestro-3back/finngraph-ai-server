@@ -40,6 +40,26 @@ async def test_empty_expansion_yields_no_pool_outcome_and_skips_filter(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_no_core_items_yields_no_candidates_outcome_through_compiled_graph(monkeypatch):
+    # filter_supply 자체의 조기 종료(status="no_candidates")도 outcome 으로
+    # 승격돼야 한다 — nodes.filter_supply 를 직접 부르는 게 아니라 컴파일된
+    # 서브그래프를 통해서 확인한다(리뷰에서 지적된 회귀: status/reason 키가
+    # SupplyTrackState 에 없어 LangGraph 가 조용히 버렸었다).
+    async def _some_edges(state):
+        return {"edges": [object()]}
+
+    monkeypatch.setattr(supply_nodes, "expand_supply", _some_edges)
+
+    inputs = _inputs()
+    inputs["plan"] = NewsPlan(event_summary="s", polarity="positive", core_items=[])
+
+    result = await build_supply_subgraph().ainvoke(inputs)
+
+    assert result["outcome"].status == "no_candidates"
+    assert result["outcome"].reason == "사건의 핵심 품목을 특정하지 못해 공급사를 선별할 수 없습니다."
+
+
+@pytest.mark.asyncio
 async def test_node_exception_is_demoted_to_outcome_error(monkeypatch):
     async def _boom(state):
         raise RuntimeError("neo4j down")
