@@ -1,8 +1,22 @@
-"""beneficiary compiled graph 조립 — 호재 단일 선형 트랙.
+"""beneficiary compiled graph 조립 — 호재 두 트랙 병렬(팬아웃/팬인).
 
-START → planner ─(장애/데이터 없음/악재)─→ END
-   → supply_track (expand_supply → filter_supply 서브그래프)
-   → candidate_selector → finance_collector → evaluator → END
+                    ┌─→ supply_track ─┐
+START → planner ────┤                 ├─→ candidate_selector ─→ finance_collector ─→ evaluator → END
+                    └─→ theme_track ──┘
+
+END 로 빠지는 출구는 planner(장애/루트 없음/악재), candidate_selector(장애/
+후보 없음), finance_collector(장애) 세 곳뿐이다 — 트랙에는 없다.
+
+planner 는 유일한 분기다 — 정지 신호가 없으면 노드 리스트를 반환해 두 트랙을
+같은 슈퍼스텝에 동시에 띄운다. 트랙은 END 로 가지 않는다: 빈손이든 장애든
+자기 TrackOutcome 을 들고 팬인까지 가고, 종료 판정은 candidate_selector
+한 곳이 한다(스펙 §3). 한쪽 트랙의 빈손이 다른 쪽 결과를 버리지 않게 하려는
+것이고, 그래서 트랙 뒤 엣지는 조건부가 아니라 무조건 엣지다.
+
+두 트랙은 같은 슈퍼스텝에 쓰지만 리듀서가 필요 없다 — 부모 키가 서로 겹치지
+않기 때문이다. supply 는 edges·supply_outcome 을, theme 은 theme_hits·
+theme_outcome 을 쓰고, 트랙 내부의 strong_ids/weak_ids 는 각 서브그래프
+state 에만 있다.
 
 정지 규칙은 하나다 — 상태에 error(장애) 나 status(정상 조기 종료) 가 들어오면
 그 다음 라우터가 END 로 보낸다. planner 는 극성 게이트에서 악재를
@@ -16,10 +30,9 @@ error 로 강등한다. 스펙 §9(예외는 그래프 밖으로 나가지 않�
 성공 경로만 쓰고, 재시도(retry_policy)·타임아웃(timeout)도 같은 자리에서
 선언된다.
 
-supply_track 은 자체 예외를 내지 않는 래퍼다 — 내부 실패는 서브그래프가
-supply_outcome(TrackOutcome) 값으로 흡수한다(tracks/supply/graph.py). candidate_selector
-가 아직 supply_outcome 을 읽지 않으므로, _stopped 가 그 error 를 봐서 대신
-멈춘다 — candidate_selector 가 이걸 읽게 되면(추후 태스크) 이 특례는 걷어낸다.
+트랙 래퍼는 자체 예외를 내지 않는다 — 내부 실패는 서브그래프가 outcome
+(TrackOutcome) 값으로 흡수한다(tracks/*/graph.py). retry_policy·timeout·
+error_handler 도 그쪽 안쪽 노드에 걸려 있어 래퍼에는 아무것도 달지 않는다.
 """
 
 from __future__ import annotations
@@ -43,6 +56,7 @@ from beneficiary.agent.nodes import (
 )
 from beneficiary.agent.state import GraphState
 from beneficiary.agent.tracks.supply import build_supply_subgraph
+from beneficiary.agent.tracks.theme import build_theme_subgraph
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +92,6 @@ def demote_to_error(fallback: dict | Callable[[GraphState], dict]):
 
 def _stopped(state: GraphState) -> bool:
     """장애든 정상 조기 종료든 — 멈추기로 했으면 더 가지 않는다."""
-    outcome = state.get("supply_outcome")
-    if outcome is not None and outcome.error:
-        return True
     return bool(state.get("error") or state.get("status"))
 
 
@@ -93,7 +104,20 @@ def stop_or(next_node: str) -> Callable[[GraphState], str]:
     return route
 
 
+def route_after_plan(state: GraphState) -> str | list[str]:
+    """유일한 분기 — 정지 신호가 없으면 두 트랙으로 동시에 나간다.
+
+    트랙은 END 로 가지 않는다. 빈손이든 장애든 TrackOutcome 을 들고 팬인까지
+    가고, 종료 판정은 candidate_selector 한 곳이 한다(스펙 §3).
+    """
+
+    if _stopped(state):
+        return END
+    return ["supply_track", "theme_track"]
+
+
 _supply_subgraph = build_supply_subgraph()
+_theme_subgraph = build_theme_subgraph()
 
 
 async def supply_track(state: GraphState) -> dict:
@@ -107,6 +131,29 @@ async def supply_track(state: GraphState) -> dict:
             "supply_outcome": result.get("outcome") or TrackOutcome()}
 
 
+async def theme_track(state: GraphState) -> dict:
+    """theme 서브그래프 래퍼.
+
+    probe 가 0개면 서브그래프를 아예 호출하지 않는다 — 불필요한 임베딩·검색·
+    LLM 호출을 건너뛴다(스펙 §4.5). planner 는 probe 0개를 조기 종료로 보지
+    않는다: supply 트랙만으로 진행할 수 있기 때문이다.
+    """
+
+    plan = state["plan"]
+    if not plan.scenario_probes:
+        return {"theme_hits": [],
+                "theme_outcome": TrackOutcome(
+                    status="no_pool",
+                    reason="이 사건에서 추적할 수혜 시나리오를 세우지 못했습니다.")}
+    result = await _theme_subgraph.ainvoke({
+        "news": state["news"], "plan": plan,
+        "root_companies": state["root_companies"],
+        "relation_lines": state["relation_lines"],
+    })
+    return {"theme_hits": result.get("hits", []),
+            "theme_outcome": result.get("outcome") or TrackOutcome()}
+
+
 def build_beneficiary_graph():
     builder = StateGraph(GraphState)
     builder.add_node(
@@ -116,7 +163,9 @@ def build_beneficiary_graph():
             {"root_companies": [], "relation_lines": [], "plan": None}
         ),
     )
-    builder.add_node("supply_track", supply_track)  # 래퍼는 예외를 내지 않는다 — error_handler 없음
+    # 래퍼는 예외를 내지 않는다 — retry_policy·timeout·error_handler 없음
+    builder.add_node("supply_track", supply_track)
+    builder.add_node("theme_track", theme_track)
     builder.add_node(
         "candidate_selector", select_candidates,
         error_handler=demote_to_error({"candidates": []}),  # 순수 로직 — 재시도·타임아웃 없음
@@ -136,11 +185,11 @@ def build_beneficiary_graph():
 
     builder.add_edge(START, "planner")
     builder.add_conditional_edges(
-        "planner", stop_or("supply_track"), ["supply_track", END]
+        "planner", route_after_plan, ["supply_track", "theme_track", END]
     )
-    builder.add_conditional_edges(
-        "supply_track", stop_or("candidate_selector"), ["candidate_selector", END]
-    )
+    # 트랙은 END 로 가지 않는다 — 조건부 엣지가 아니라 무조건 엣지다
+    builder.add_edge("supply_track", "candidate_selector")
+    builder.add_edge("theme_track", "candidate_selector")
     builder.add_conditional_edges(
         "candidate_selector", stop_or("finance_collector"), ["finance_collector", END]
     )
