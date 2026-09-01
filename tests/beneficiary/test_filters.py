@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from beneficiary.models import SupplyChainCandidate, FilterOutput, NewsPlan
+from beneficiary.models import FilterOutput, NewsPlan, ScenarioProbe, SupplyChainCandidate, ThemeCandidate
 from beneficiary.agent.tracks.supply import nodes as supply_module
+from beneficiary.agent.tracks.theme import nodes as theme_nodes
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.postprocess import apply_filter_output
 
@@ -51,3 +52,30 @@ async def test_filter_supply_node_stops_when_no_core_items(monkeypatch):
     result = await supply_module.filter_supply({"edges": [_edge("g01")], "plan": plan})
     assert called["n"] == 0  # 판정 기준이 없으면 LLM 도 부르지 않는다
     assert result["status"] == "no_candidates" and result["reason"]
+
+
+def _hit(tid, score, ticker="005930"):
+    return ThemeCandidate(tid=tid, stage=1, hypothesis="h", ticker=ticker,
+                          name="회사", company_id=1, market="KOSPI", score=score,
+                          matched_themes=["테마A"], matched_reasons=["[테마A] 사유"])
+
+
+async def test_borderline_score_cannot_be_strong(monkeypatch):
+    """임계값 언저리 후보는 LLM 이 strong 을 줘도 코드가 weak 로 강등한다."""
+    hits = [_hit("t01", theme_nodes.MIN_SCORE + 0.001, "000001"),   # 언저리
+            _hit("t02", theme_nodes.MIN_SCORE + 0.10, "000002")]    # 충분(0.72 — 실측 true positive 대역)
+
+    async def _fake_filter(prompt):
+        return FilterOutput(strong=["t01", "t02"], weak=[])
+
+    monkeypatch.setattr(theme_nodes.llm, "filter_theme", _fake_filter)
+
+    state = {"hits": hits,
+             "plan": NewsPlan(event_summary="s", polarity="positive",
+                              scenario_probes=[ScenarioProbe(stage=1, hypothesis="h",
+                                                             query="q")])}
+    result = await theme_nodes.filter_theme(state)
+
+    assert result["strong_ids"] == ["t02"]
+    assert result["weak_ids"] == ["t01"]
+    assert hits[0].relevance == "weak" and hits[1].relevance == "strong"

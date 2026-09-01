@@ -15,6 +15,7 @@ from beneficiary.models import (
     NewsPlan,
     PackedContext,
     RelationLine,
+    ThemeCandidate,
 )
 
 SHOWN_ITEMS_CAP = 10  # 한 줄에 노출하는 아이템 수 상한
@@ -78,6 +79,20 @@ def pack_supply_filter_context(plan: NewsPlan, edges: list[SupplyChainCandidate]
             f"[{edge.gid}] (루트: {edge.root_name}) {edge.subject_name} →공급→ {edge.object_name}"
             f" | items: {items} | 공시{edge.disclosure_count}·뉴스{edge.news_mention_count}"
         )
+    return "\n".join(lines)
+
+
+def pack_theme_filter_context(plan: NewsPlan, hits: list[ThemeCandidate]) -> str:
+    lines = _plan_block(plan) + [""]
+    lines.append("[시나리오 가설]")
+    for probe in plan.scenario_probes:
+        lines.append(f"- (stage {probe.stage}) {probe.hypothesis}")
+    lines.append("")
+    for hit in hits:
+        themes = ", ".join(hit.matched_themes)
+        lines.append(f"[{hit.tid}] (stage {hit.stage}) {hit.name} ({hit.ticker}) | 테마: {themes}")
+        for reason in hit.matched_reasons:
+            lines.append(f"      편입 사유: {reason}")
     return "\n".join(lines)
 
 

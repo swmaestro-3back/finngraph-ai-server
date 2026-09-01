@@ -25,6 +25,7 @@ from beneficiary.agent.prompts import (
     EVALUATOR_SYSTEM,
     NEWS_PLAN_SYSTEM,
     SUPPLY_FILTER_SYSTEM,
+    THEME_FILTER_SYSTEM,
 )
 from core.config import settings
 
@@ -89,6 +90,11 @@ def _supply_filter_chain() -> Runnable:
 
 
 @lru_cache
+def _theme_filter_chain() -> Runnable:
+    return _chain(THEME_FILTER_SYSTEM, FilterOutput, _light_chat(0.0), "filter_theme")
+
+
+@lru_cache
 def _evaluator_chain() -> Runnable:
     chat = _chat(settings.bedrock_evaluator_model, 0.1, MAX_OUTPUT_TOKENS_EVALUATOR)
     return _chain(EVALUATOR_SYSTEM, EvaluatorOutput, chat, "evaluate_beneficiary")
@@ -100,6 +106,10 @@ async def plan_news(prompt: str) -> NewsPlan:
 
 async def filter_supply(prompt: str) -> FilterOutput:
     return await _supply_filter_chain().ainvoke({"context": prompt})
+
+
+async def filter_theme(prompt: str) -> FilterOutput:
+    return await _theme_filter_chain().ainvoke({"context": prompt})
 
 
 async def evaluate_beneficiary(prompt: str) -> EvaluatorOutput:

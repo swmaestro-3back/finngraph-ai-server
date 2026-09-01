@@ -18,7 +18,9 @@ from beneficiary import repository
 from beneficiary.models import ScenarioProbe, ThemeCandidate
 from beneficiary.agent.nodes.common import derive_exclusions
 from beneficiary.agent.tracks.theme.state import ThemeTrackState
-from beneficiary.agent.utils import embed
+from beneficiary.agent.utils import embed, llm
+from beneficiary.agent.utils.packer import pack_theme_filter_context
+from beneficiary.agent.utils.postprocess import apply_filter_output
 
 logger = logging.getLogger(__name__)
 
@@ -128,3 +130,19 @@ async def expand_theme(state: ThemeTrackState) -> dict:
         len(probes), MIN_SCORE, raw_total, len(hits),
     )
     return {"hits": hits}
+
+
+async def filter_theme(state: ThemeTrackState) -> dict:
+    """LLM#2(테마 트랙) — 시나리오 가설과 편입 사유를 대조해 선별한다.
+
+    실패는 서브그래프의 error_handler 가 outcome.error 로 강등한다.
+    """
+
+    hits = state["hits"]
+    output = await llm.filter_theme(pack_theme_filter_context(state["plan"], hits))
+    # 임계값 언저리 후보는 strong 금지 — 유사도가 supplied_items 의 역할을 대신한다.
+    cap_weak_ids = {hit.tid for hit in hits if hit.score < MIN_SCORE + WEAK_MARGIN}
+    strong_ids, weak_ids = apply_filter_output(
+        output, {hit.tid: hit for hit in hits}, cap_weak_ids
+    )
+    return {"hits": hits, "strong_ids": strong_ids, "weak_ids": weak_ids}

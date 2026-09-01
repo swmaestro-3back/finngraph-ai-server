@@ -8,6 +8,7 @@ PROMPT_VERSION 은 응답·트레이스에 실리는 메타데이터다 — 프�
 from beneficiary.agent.prompts.evaluator import EVALUATOR_SYSTEM
 from beneficiary.agent.prompts.news_plan import NEWS_PLAN_SYSTEM
 from beneficiary.agent.prompts.supply_filter import SUPPLY_FILTER_SYSTEM
+from beneficiary.agent.prompts.theme_filter import THEME_FILTER_SYSTEM
 
 PROMPT_VERSION = "b3"
 
@@ -22,4 +23,5 @@ __all__ = [
     "NEWS_PLAN_SYSTEM",
     "PROMPT_VERSION",
     "SUPPLY_FILTER_SYSTEM",
+    "THEME_FILTER_SYSTEM",
 ]
