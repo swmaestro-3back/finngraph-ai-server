@@ -22,6 +22,7 @@ from psycopg.rows import dict_row
 
 from beneficiary.models import RelationLine
 from core import MARKETS, NodeLabel, RelationshipType, neo4j_client
+from core.config import settings
 
 
 async def _fetch_all(conn: AsyncConnection, query: str, params: Any = None) -> list[dict]:
@@ -112,6 +113,51 @@ RETURN n.ticker AS ticker, n.name AS name, n.company_id AS company_id,
         {"root_name": root_name, "markets": list(MARKETS),
          "exclude_tickers": exclude_tickers, "exclude_names": exclude_names},
     )
+    return [dict(record) for record in records]
+
+
+async def search_theme_reasons(
+    query_vector: list[float],
+    exclude_names: list[str],
+    exclude_tickers: list[str],
+    min_score: float,
+    limit: int,
+    over_fetch: int,
+) -> list[dict]:
+    """시나리오 질의와 의미가 맞는 테마 편입 사유를 가진 상장 기업 — 활성 KOSPI/KOSDAQ 만.
+
+    벡터 인덱스는 top-k 를 먼저 뽑고 그 다음 WHERE 가 걸린다 — 시장·상장·제외
+    필터가 뒤에서 깎으므로 over_fetch 로 과다 조회해야 limit 슬롯이 채워진다.
+    (fetch_supply_neighbors_by_name 과 달리 필터를 앞단으로 밀 수 없다.)
+
+    인덱스 이름은 LiteralString 제약 때문에 파라미터로 넘긴다.
+    """
+
+    query = cast(LiteralString, f"""
+CALL db.index.vector.queryRelationships($index_name, $over_fetch, $query_vector)
+YIELD relationship AS r, score
+WHERE score >= $min_score
+WITH r, score, startNode(r) AS c, endNode(r) AS t
+WHERE c.ticker IS NOT NULL
+  AND c.market IN $markets
+  AND c.is_active = true
+  AND NOT c.ticker IN $exclude_tickers
+  AND NOT c.name   IN $exclude_names
+RETURN c.ticker AS ticker, c.name AS name, c.company_id AS company_id,
+       c.market AS market, t.name AS theme_name, r.reason AS reason, score
+ORDER BY score DESC
+LIMIT $limit
+""")
+    records = await neo4j_client.execute(query, {
+        "index_name": settings.neo4j_reason_vector_index,
+        "over_fetch": over_fetch,
+        "query_vector": query_vector,
+        "min_score": min_score,
+        "markets": list(MARKETS),
+        "exclude_names": exclude_names,
+        "exclude_tickers": exclude_tickers,
+        "limit": limit,
+    })
     return [dict(record) for record in records]
 
 

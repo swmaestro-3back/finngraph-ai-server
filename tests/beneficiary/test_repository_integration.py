@@ -266,3 +266,51 @@ async def test_pg_party_evidence_and_valuation_queries(conn, seed):
     )
     assert [row["evidence"] for row in evidence] == ["공급 계약 근거 문장"]  # affirmed 1건
     assert await repository.fetch_latest_valuation(conn, "NOPE") is None
+
+
+@pytest_asyncio.fixture
+async def neo4j_conn():
+    """search_theme_reasons 테스트 전용 접속 — seed 픽스처와 달리 데이터를 심지
+    않고 실제 그래프(시드된 로컬 인덱스)를 그대로 조회하므로 연결만 잡는다."""
+
+    await neo4j_client.connect()
+    yield
+    await neo4j_client.close()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_search_theme_reasons_returns_listed_domestic_only(neo4j_conn):
+    from beneficiary.agent.utils import embed
+
+    vector = (await embed.embed_queries(["변압기 초고압 전력기기"]))[0]
+    rows = await repository.search_theme_reasons(
+        query_vector=vector, exclude_names=[], exclude_tickers=[],
+        min_score=0.0, limit=10, over_fetch=50,
+    )
+
+    assert all(row["ticker"] for row in rows)
+    assert all(row["market"] in ("KOSPI", "KOSDAQ") for row in rows)
+    assert all(row["reason"] for row in rows)
+    # ORDER BY score DESC 가 보존되는지
+    assert rows == sorted(rows, key=lambda r: -r["score"])
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_search_theme_reasons_honors_exclusions(neo4j_conn):
+    from beneficiary.agent.utils import embed
+
+    vector = (await embed.embed_queries(["반도체 HBM"]))[0]
+    baseline = await repository.search_theme_reasons(
+        query_vector=vector, exclude_names=[], exclude_tickers=[],
+        min_score=0.0, limit=5, over_fetch=50,
+    )
+    assert baseline, "기준 결과가 없으면 이 테스트는 아무것도 검증하지 못한다"
+
+    excluded = await repository.search_theme_reasons(
+        query_vector=vector, exclude_names=[baseline[0]["name"]],
+        exclude_tickers=[baseline[0]["ticker"]],
+        min_score=0.0, limit=5, over_fetch=50,
+    )
+    assert baseline[0]["ticker"] not in {row["ticker"] for row in excluded}
