@@ -127,18 +127,29 @@ def merge_into_supply(candidate: Candidate, hit: ThemeCandidate) -> None:
 def select_theme_candidates(
     hits: list[ThemeCandidate], taken: dict[str, Candidate], cap_per_market: int
 ) -> list[Candidate]:
-    """supply 선발분에 없는 티커만 자기 슬롯에 채운다 — 겹치면 병합하고 건너뛴다."""
+    """supply 선발분에 없는 티커만 자기 슬롯에 채운다 — 겹치면 병합한다.
+
+    병합은 슬롯을 쓰지 않는다: taken 에 있는 히트는 strong·weak·정렬 위치와
+    무관하게 전부 접는다(그렇지 않으면 cap 도달로 인한 break 가 뒤에 오는
+    병합 대상을 통째로 삼킨다). 채움은 taken 이 아닌 히트만으로, 시장당
+    상한까지 별도로 진행한다.
+    """
 
     selected: list[Candidate] = []
     for market in MARKETS:
-        pool: list[Candidate] = []
         strong = sorted([h for h in hits if h.market == market and h.relevance == "strong"],
                         key=_theme_sort_key)
         weak = sorted([h for h in hits if h.market == market and h.relevance == "weak"],
                       key=_theme_sort_key)
-        for hit in strong:
+
+        # 교집합 병합 — 용량(cap)·등급(strong/weak)과 무관하게 전부 접는다.
+        for hit in [*strong, *weak]:
             if hit.ticker in taken:
                 merge_into_supply(taken[hit.ticker], hit)
+
+        pool: list[Candidate] = []
+        for hit in strong:
+            if hit.ticker in taken:
                 continue
             if len(pool) >= cap_per_market:
                 break
@@ -164,6 +175,11 @@ async def select_candidates(state: GraphState) -> dict:
                 "error": f"supply: {supply_outcome.error} / theme: {theme_outcome.error}"}
 
     if not edges and not hits:
+        # 한쪽만 장애면 no_pool 로 계속 진행하되(다른 쪽은 정상 조기 종료일 수
+        # 있다), 장애 원문은 사용자용 reason 에 넣지 않고 로그로만 남긴다.
+        for label, outcome in (("supply", supply_outcome), ("theme", theme_outcome)):
+            if outcome.error:
+                logger.warning("%s 트랙 장애(no_pool 로 계속): %s", label, outcome.error)
         reasons = [o.reason for o in (supply_outcome, theme_outcome) if o.reason]
         return {"candidates": [], "status": "no_pool",
                 "reason": " ".join(reasons) or "탐색된 후보 기업이 없습니다."}

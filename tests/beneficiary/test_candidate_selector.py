@@ -9,6 +9,7 @@ from beneficiary.agent.nodes.candidate_selector import (
     select_candidates,
     select_supply_candidates,
     POOL_PER_MARKET,
+    POOL_PER_TRACK_PER_MARKET,
 )
 
 
@@ -161,3 +162,71 @@ async def test_raw_candidates_but_nothing_survives_selection_is_no_candidates():
                                       "theme_outcome": TrackOutcome()})
     assert result["status"] == "no_candidates"
     assert result["candidates"] == []
+
+
+@pytest.mark.asyncio
+async def test_merge_happens_even_when_taken_ticker_sorts_after_cap():
+    """cap 도달로 인한 break 가 뒤에 오는 병합 대상까지 삼키면 안 된다 (fix round 1, finding 1)."""
+    edges = [_edge("g01", "000001", market="KOSPI", relevance="strong")]
+    # edges 가 있으므로 theme cap = POOL_PER_TRACK_PER_MARKET. cap 개의 non-taken
+    # 히트로 pool 을 채우고, 그다음 non-taken 히트에서 break 가 걸린 뒤에야
+    # taken 히트(000001)가 오도록 정렬 점수를 낮춰 맨 뒤에 둔다.
+    fillers = [_hit(f"t{i:02d}", f"00000{i + 2}", score=0.99 - i * 0.01)
+               for i in range(POOL_PER_TRACK_PER_MARKET + 1)]
+    taken_hit = _hit("t99", "000001", score=0.01)  # 가장 낮은 점수 → 정렬상 맨 뒤
+    hits = [*fillers, taken_hit]
+
+    result = await select_candidates({"edges": edges, "theme_hits": hits,
+                                      "supply_outcome": TrackOutcome(),
+                                      "theme_outcome": TrackOutcome()})
+    by_ticker = {c.ticker: c for c in result["candidates"]}
+    assert by_ticker["000001"].track == "both"  # cap 도달 뒤에도 병합은 일어난다
+    filler_tickers = {h.ticker for h in fillers}
+    assert len(filler_tickers & set(by_ticker)) == POOL_PER_TRACK_PER_MARKET  # cap 만큼만 채움
+
+
+@pytest.mark.asyncio
+async def test_weak_hit_on_taken_ticker_still_merges():
+    """taken 티커의 히트가 weak 여도 병합은 일어난다 (fix round 1, finding 2)."""
+    edges = [_edge("g01", "000001", market="KOSPI", relevance="strong")]
+    hits = [_hit("t01", "000001", relevance="weak", score=0.5)]
+
+    result = await select_candidates({"edges": edges, "theme_hits": hits,
+                                      "supply_outcome": TrackOutcome(),
+                                      "theme_outcome": TrackOutcome()})
+    merged = {c.ticker: c for c in result["candidates"]}["000001"]
+    assert merged.track == "both"
+    assert merged.matched_reasons == ["[테마A] 사유"]
+
+
+@pytest.mark.asyncio
+async def test_supply_track_absorbs_up_to_pool_per_market_when_theme_empty():
+    """흡수 공식의 supply 쪽 방향도 select_candidates 로 직접 검증한다 (fix round 1, finding 3)."""
+    edges = [
+        _edge("g01", "000001", market="KOSPI", relevance="strong"),  # strong 1개 → 쿼터(2) 미달
+        _edge("g02", "000002", market="KOSPI", relevance="weak", dc=5),
+        _edge("g03", "000003", market="KOSPI", relevance="weak", dc=4),
+        _edge("g04", "000004", market="KOSPI", relevance="weak", dc=3),
+        _edge("g05", "000005", market="KOSPI", relevance="weak", dc=2),
+    ]
+    result = await select_candidates({"edges": edges, "theme_hits": [],
+                                      "supply_outcome": TrackOutcome(),
+                                      "theme_outcome": TrackOutcome(status="no_pool")})
+    kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
+    assert len(kospi) == POOL_PER_MARKET  # theme 이 비어 supply 가 시장 총 상한까지 흡수
+
+
+@pytest.mark.asyncio
+async def test_no_pool_reason_excludes_error_text_but_logs_warning(caplog):
+    """장애 원문은 사용자용 reason 이 아니라 로그로만 남는다 (fix round 1, finding 4)."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="beneficiary.agent.nodes.candidate_selector"):
+        result = await select_candidates({
+            "edges": [], "theme_hits": [],
+            "supply_outcome": TrackOutcome(status="no_pool", reason="공급망 사유"),
+            "theme_outcome": TrackOutcome(error="vector index missing"),
+        })
+    assert result["status"] == "no_pool"
+    assert "vector index missing" not in result["reason"]
+    assert "vector index missing" in caplog.text
