@@ -51,3 +51,21 @@ async def test_search_failure_becomes_outcome_error(monkeypatch):
 
     assert result["outcome"].error is not None
     assert result["hits"] == []
+
+
+@pytest.mark.asyncio
+async def test_filter_failure_also_clears_hits(monkeypatch):
+    """선별 단계 실패도 원시 히트를 비운다 — expand 실패만 덮으면 구멍이 남는다."""
+    async def _some_hits(state):
+        return {"hits": [object()]}
+
+    async def _boom(state):
+        raise RuntimeError("bedrock timeout")
+
+    monkeypatch.setattr(theme_nodes, "expand_theme", _some_hits)
+    monkeypatch.setattr(theme_nodes, "filter_theme", _boom)
+
+    result = await build_theme_subgraph().ainvoke(_inputs())
+
+    assert result["outcome"].error is not None
+    assert result["hits"] == []

@@ -71,9 +71,12 @@ def build_theme_subgraph():
     builder.add_node("expand_theme", _expand,
                      retry_policy=DB_RETRY, timeout=DB_TIMEOUT,
                      error_handler=demote_to_outcome({"hits": []}))
+    # 선별이 실패하면 남은 히트는 전부 relevance=None 이라 쓸 수 없다 — 원시
+    # 리스트까지 비워야 팬인이 "원시 행은 있다"고 오해하지 않는다.
     builder.add_node("filter_theme", _filter,
                      timeout=LLM_TIMEOUT,
-                     error_handler=demote_to_outcome({"strong_ids": [], "weak_ids": []}))
+                     error_handler=demote_to_outcome(
+                         {"hits": [], "strong_ids": [], "weak_ids": []}))
     builder.add_edge(START, "expand_theme")
     builder.add_conditional_edges("expand_theme", _after_expand, ["filter_theme", END])
     builder.add_edge("filter_theme", END)

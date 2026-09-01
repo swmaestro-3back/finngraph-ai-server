@@ -71,3 +71,26 @@ async def test_node_exception_is_demoted_to_outcome_error(monkeypatch):
     # 예외는 서브그래프 밖으로 나가지 않는다 — 값으로 받는다
     assert result["outcome"].error is not None
     assert result["edges"] == []
+
+
+@pytest.mark.asyncio
+async def test_filter_failure_also_clears_edges(monkeypatch):
+    """선별 단계 실패도 원시 간선을 비운다.
+
+    expand 실패만 확인하면 구멍이 남는다: filter 가 실패하면 남은 간선은 전부
+    relevance=None 이라 쓸 수 없는데, 그것을 state 에 남기면 팬인이 "원시 행은
+    있으니 장애가 아니다"로 오독해 두 트랙 동시 장애의 503 이 죽는다.
+    """
+    async def _some_edges(state):
+        return {"edges": [object()]}
+
+    async def _boom(state):
+        raise RuntimeError("bedrock timeout")
+
+    monkeypatch.setattr(supply_nodes, "expand_supply", _some_edges)
+    monkeypatch.setattr(supply_nodes, "filter_supply", _boom)
+
+    result = await build_supply_subgraph().ainvoke(_inputs())
+
+    assert result["outcome"].error is not None
+    assert result["edges"] == []

@@ -152,6 +152,30 @@ async def test_both_tracks_failed_is_error_not_no_pool():
 
 
 @pytest.mark.asyncio
+async def test_both_tracks_failed_is_error_even_with_raw_rows_left_in_state():
+    """장애 판정은 리스트 상태에 걸리지 않는다.
+
+    filter 단계에서 실패하면 원시 리스트가 state 에 남을 수 있었다. 그때
+    `not edges and not hits` 가드가 통째로 죽어 두 축 동시 장애가 200 +
+    "심사할 후보가 없습니다"로 나갔다 — 전면 Bedrock 장애가 모니터링에서
+    보이지 않게 되는 경로다.
+    """
+    edges = [_edge("g01", "000001")]          # relevance 는 붙지 못한 채 남은 원시 행
+    hits = [_hit("t01", "000002")]
+
+    result = await select_candidates({
+        "edges": edges, "theme_hits": hits,
+        "supply_outcome": TrackOutcome(error="bedrock timeout"),
+        "theme_outcome": TrackOutcome(error="bedrock timeout"),
+    })
+
+    assert result.get("error")
+    assert "bedrock timeout" in result["error"]
+    assert result.get("status") is None
+    assert result["candidates"] == []
+
+
+@pytest.mark.asyncio
 async def test_raw_candidates_but_nothing_survives_selection_is_no_candidates():
     """edges/theme_hits 는 있었지만 relevance 가 전부 irrelevant 라 풀에 아무도 안 남는 경우."""
     edges = [_edge("g01", "000001", market="KOSPI", relevance="irrelevant")]
@@ -167,10 +191,12 @@ async def test_raw_candidates_but_nothing_survives_selection_is_no_candidates():
 @pytest.mark.asyncio
 async def test_merge_happens_even_when_taken_ticker_sorts_after_cap():
     """cap 도달로 인한 break 가 뒤에 오는 병합 대상까지 삼키면 안 된다 (fix round 1, finding 1)."""
-    edges = [_edge("g01", "000001", market="KOSPI", relevance="strong")]
-    # edges 가 있으므로 theme cap = POOL_PER_TRACK_PER_MARKET. cap 개의 non-taken
-    # 히트로 pool 을 채우고, 그다음 non-taken 히트에서 break 가 걸린 뒤에야
-    # taken 히트(000001)가 오도록 정렬 점수를 낮춰 맨 뒤에 둔다.
+    # supply 가 기본 슬롯을 꽉 채워야 theme cap 이 POOL_PER_TRACK_PER_MARKET 로
+    # 좁아지고 break 가 실제로 걸린다.
+    edges = [_edge("g01", "000001", market="KOSPI", relevance="strong"),
+             _edge("g02", "000009", market="KOSPI", relevance="strong")]
+    # cap 개의 non-taken 히트로 pool 을 채우고, 그다음 non-taken 히트에서 break 가
+    # 걸린 뒤에야 taken 히트(000001)가 오도록 정렬 점수를 낮춰 맨 뒤에 둔다.
     fillers = [_hit(f"t{i:02d}", f"00000{i + 2}", score=0.99 - i * 0.01)
                for i in range(POOL_PER_TRACK_PER_MARKET + 1)]
     taken_hit = _hit("t99", "000001", score=0.01)  # 가장 낮은 점수 → 정렬상 맨 뒤
@@ -214,6 +240,81 @@ async def test_supply_track_absorbs_up_to_pool_per_market_when_theme_empty():
                                       "theme_outcome": TrackOutcome(status="no_pool")})
     kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
     assert len(kospi) == POOL_PER_MARKET  # theme 이 비어 supply 가 시장 총 상한까지 흡수
+
+
+@pytest.mark.asyncio
+async def test_absorption_follows_actual_shortfall_not_raw_row_presence():
+    """원시 행을 냈지만 후보를 0개 낸 트랙은 슬롯을 붙들지 못한다.
+
+    이전 규칙은 bool(hits)/bool(edges) 를 대리 지표로 썼다 — theme 이 원시
+    히트를 냈는데 filter 가 전부 irrelevant 로 판정하면, supply 가 채울 수
+    있는데도 시장 풀이 절반에서 멈췄다.
+    """
+    edges = [_edge(f"g0{i}", f"00000{i}", market="KOSPI", relevance="strong", dc=10 - i)
+             for i in range(1, 6)]                       # KOSPI strong 공급사 5개
+    hits = [_hit("t01", "000009", relevance="irrelevant")]  # 원시 행은 있으나 선발 0
+
+    result = await select_candidates({"edges": edges, "theme_hits": hits,
+                                      "supply_outcome": TrackOutcome(),
+                                      "theme_outcome": TrackOutcome()})
+
+    kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
+    assert len(kospi) == POOL_PER_MARKET  # 2가 아니라 4
+    assert all(c.track == "supply" for c in kospi)
+
+
+@pytest.mark.asyncio
+async def test_supply_absorption_does_not_displace_theme_candidates():
+    """흡수는 잔여 슬롯에만 미친다 — supply 가 theme 의 기본 슬롯을 먹지 않는다."""
+    edges = [_edge(f"g0{i}", f"00000{i}", market="KOSPI", relevance="strong", dc=10 - i)
+             for i in range(1, 6)]                       # 흡수 가능한 supply 5개
+    hits = [_hit("t01", "000011", score=0.9), _hit("t02", "000012", score=0.8)]
+
+    result = await select_candidates({"edges": edges, "theme_hits": hits,
+                                      "supply_outcome": TrackOutcome(),
+                                      "theme_outcome": TrackOutcome()})
+
+    kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
+    assert len(kospi) == POOL_PER_MARKET
+    tracks = [c.track for c in kospi]
+    assert tracks.count("supply") == POOL_PER_TRACK_PER_MARKET
+    assert tracks.count("theme") == POOL_PER_TRACK_PER_MARKET
+
+
+@pytest.mark.asyncio
+async def test_theme_hit_on_an_absorbed_supply_candidate_merges_instead_of_replacing():
+    """흡수분(기본 슬롯 밖의 supply)을 지목한 히트도 both 로 접힌다.
+
+    병합을 슬롯 배분 뒤로 미루면, 3순위 공급사를 지목한 히트가 그 기업을
+    supply 근거 없는 순수 theme 후보로 바꿔치기한다 — §7.2 가 금지하는 방향
+    (그래프 간선 근거가 벡터 유사도보다 단단하다)이다.
+    """
+    edges = [_edge(f"g0{i}", f"00000{i}", market="KOSPI", relevance="strong", dc=10 - i)
+             for i in range(1, 5)]                       # 000001·2 가 기본 슬롯, 3·4 는 흡수분
+    hits = [_hit("t01", "000003")]                       # 흡수분을 지목한 히트
+
+    result = await select_candidates({"edges": edges, "theme_hits": hits,
+                                      "supply_outcome": TrackOutcome(),
+                                      "theme_outcome": TrackOutcome()})
+
+    by_ticker = {c.ticker: c for c in result["candidates"]}
+    assert by_ticker["000003"].track == "both"
+    assert by_ticker["000003"].source_edges                   # supply 근거가 살아 있다
+    assert by_ticker["000003"].matched_reasons == ["[테마A] 사유"]
+    assert len([c for c in result["candidates"] if c.market == "KOSPI"]) == POOL_PER_MARKET
+
+
+@pytest.mark.asyncio
+async def test_failed_supply_filter_lets_theme_take_the_whole_market():
+    """filter 실패로 간선이 비워진 트랙은 슬롯을 남기지 않는다(그래프가 edges 를 비운다)."""
+    hits = [_hit(f"t{i:02d}", f"00000{i}", score=0.9 - i * 0.01) for i in range(1, 6)]
+
+    result = await select_candidates({"edges": [], "theme_hits": hits,
+                                      "supply_outcome": TrackOutcome(error="bedrock timeout"),
+                                      "theme_outcome": TrackOutcome()})
+
+    kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
+    assert len(kospi) == POOL_PER_MARKET
 
 
 @pytest.mark.asyncio
