@@ -4,8 +4,9 @@
 START → planner ────┤                 ├─→ candidate_selector ─→ finance_collector ─→ evaluator → END
                     └─→ theme_track ──┘
 
-END 로 빠지는 출구는 planner(장애/루트 없음/악재), candidate_selector(장애/
-후보 없음), finance_collector(장애) 세 곳뿐이다 — 트랙에는 없다.
+조기 종료 출구는 planner(장애/루트 없음/악재), candidate_selector(장애/후보
+없음), finance_collector(장애) 세 곳뿐이다 — 트랙에는 없다. evaluator 는
+조기 종료가 아니라 정상 종점이다.
 
 planner 는 유일한 분기다 — 정지 신호가 없으면 노드 리스트를 반환해 두 트랙을
 같은 슈퍼스텝에 동시에 띄운다. 트랙은 END 로 가지 않는다: 빈손이든 장애든
@@ -187,7 +188,17 @@ def build_beneficiary_graph():
     builder.add_conditional_edges(
         "planner", route_after_plan, ["supply_track", "theme_track", END]
     )
-    # 트랙은 END 로 가지 않는다 — 조건부 엣지가 아니라 무조건 엣지다
+    # 트랙은 END 로 가지 않는다 — 조건부 엣지가 아니라 무조건 엣지다.
+    #
+    # 이 팬인이 배리어 없이 성립하는 근거는 "트랙 래퍼가 각각 노드 하나"라는
+    # 불변식이다. 두 트랙이 같은 슈퍼스텝에서 끝나므로, 문자열 소스 add_edge 가
+    # 공유하는 branch:to:candidate_selector 채널(EphemeralValue(guard=False))에
+    # 두 쓰기가 같은 스텝에 모이고 selector 는 정확히 한 번 돈다.
+    # 어느 한쪽 트랙이라도 슈퍼스텝을 여러 번 쓰는 경로로 바뀌면 이 전제가 깨져
+    # 짧은 쪽이 끝나는 순간 selector 가 먼저 돌아버린다. 그때는
+    # candidate_selector 를 defer=True 로 선언해야 한다(지금은 불변식이 성립하므로
+    # 걸지 않는다). 현행 팬인 테스트는 트랙을 단일 노드 가짜로 바꿔 넣기 때문에
+    # 이 회귀를 잡지 못한다 — 트랙 구조를 바꾸는 사람이 여기를 읽어야 한다.
     builder.add_edge("supply_track", "candidate_selector")
     builder.add_edge("theme_track", "candidate_selector")
     builder.add_conditional_edges(

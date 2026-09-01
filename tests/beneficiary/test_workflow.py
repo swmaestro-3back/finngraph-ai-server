@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
 from langgraph.errors import NodeError
 from langgraph.graph import END
 
@@ -232,6 +231,7 @@ def test_track_wrappers_carry_no_retry_or_timeout():
     nodes = beneficiary_graph.nodes
     for name in ("supply_track", "theme_track"):
         assert nodes[name].retry_policy is None
+        assert nodes[name].timeout is None
         assert nodes[name].error_handler_node is None
 
 
