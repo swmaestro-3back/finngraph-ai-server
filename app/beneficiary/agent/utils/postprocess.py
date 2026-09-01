@@ -59,6 +59,7 @@ def validate_and_rank(
     evaluation: EvaluatorOutput,
     by_cid: dict[str, Candidate],
     eids_by_cid: dict[str, set[str]],
+    track_note: str | None = None,
 ) -> list[RankedItem]:
     """심사 출력 재강제 (스펙 §4.8).
 
@@ -68,6 +69,8 @@ def validate_and_rank(
     ③ 비실존 cid/eid 폐기, 인용 없는 rationale low 강등, 중복 cid 는 첫 판정만,
     benefit 아닌 impact 폐기 — impact 는 pydantic Literal 로도 막혀 있지만
     방어적으로 한 번 더 거른다.
+    ④ track_note 가 있으면 (한 탐색 축이 비었거나 실패했을 때) 모든 캐비앗에
+    접미한다 — 프롬프트가 아니라 코드가 사용자에게 그 사실을 보증한다.
     """
 
     items: list[RankedItem] = []
@@ -91,12 +94,16 @@ def validate_and_rank(
         if not CITATION_RE.search(insight.rationale):
             confidence = "low"
 
+        caveats = insight.caveats
+        if track_note:
+            caveats = f"{caveats} {track_note}".strip() if caveats else track_note
+
         items.append(RankedItem(
             candidate=candidate,
             impact=insight.impact,
             confidence=confidence,
             rationale=insight.rationale,
-            caveats=insight.caveats,
+            caveats=caveats,
             evidence_ids=evidence_ids,
         ))
 

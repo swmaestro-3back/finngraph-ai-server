@@ -59,4 +59,6 @@ shortfall in caveats. Order insights best pick first regardless of market.
    candidate with no supplied items (reason-only) is capped at medium.
 8. Write every output text (event_interpretation, rationale, caveats) in
    Korean.
+9. A "2차 파급" candidate reached the pool through a two-step causal chain.
+   Never give it "high" confidence. Say so in caveats when you recommend one.
 """

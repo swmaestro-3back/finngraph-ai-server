@@ -31,7 +31,12 @@ def _news_block(news: NewsContext) -> list[str]:
 
 def _plan_block(plan: NewsPlan) -> list[str]:
     items = ", ".join(plan.core_items) if plan.core_items else "(없음)"
-    return [f"[사건 계획] {plan.event_summary} / 극성: {plan.polarity} / 핵심 아이템: {items}"]
+    lines = [f"[사건 계획] {plan.event_summary} / 극성: {plan.polarity} / 핵심 아이템: {items}"]
+    if plan.scenario_probes:
+        lines.append("[시나리오 가설 — stage 1 은 사건의 직접 수요, stage 2 는 파생 수요]")
+        for probe in plan.scenario_probes:
+            lines.append(f"- (stage {probe.stage}) {probe.hypothesis}")
+    return lines
 
 
 def _num(value) -> str:
@@ -84,13 +89,12 @@ def pack_supply_filter_context(plan: NewsPlan, edges: list[SupplyChainCandidate]
 
 def pack_theme_filter_context(plan: NewsPlan, hits: list[ThemeCandidate]) -> str:
     lines = _plan_block(plan) + [""]
-    lines.append("[시나리오 가설]")
-    for probe in plan.scenario_probes:
-        lines.append(f"- (stage {probe.stage}) {probe.hypothesis}")
-    lines.append("")
     for hit in hits:
         themes = ", ".join(hit.matched_themes)
-        lines.append(f"[{hit.tid}] (stage {hit.stage}) {hit.name} ({hit.ticker}) | 테마: {themes}")
+        lines.append(
+            f"[{hit.tid}] (stage {hit.stage}) {hit.name} ({hit.ticker})"
+            f" | 가설: {hit.hypothesis} | 테마: {themes}"
+        )
         for reason in hit.matched_reasons:
             lines.append(f"      편입 사유: {reason}")
     return "\n".join(lines)
@@ -149,10 +153,11 @@ def pack_evaluator_context(
         eids_by_cid[cid] = set()
 
         grade = candidate.relevance + ("(승격)" if candidate.promoted else "")
+        stage_label = f" / {candidate.stage}차 파급" if candidate.stage else ""
         lines.append(
             f"[후보 {cid}] {candidate.name} ({candidate.ticker}, "
             f"{candidate.market or '시장 미상'})"
-            f" / 트랙 {TRACK_LABELS[candidate.track]} / 등급 {grade}"
+            f" / 트랙 {TRACK_LABELS[candidate.track]}{stage_label} / 등급 {grade}"
             f" / 매칭 아이템: {_items_inline(candidate.matched_items)}"
         )
         lines.extend(f"  {line}" for line in candidate.relation_lines)

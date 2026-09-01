@@ -62,8 +62,29 @@ def test_pack_supply_filter_lines_show_items_or_placeholder():
 def test_pack_theme_filter_lists_hypotheses_and_reasons():
     prompt = pack_theme_filter_context(THEME_PLAN, [_hit()])
     assert "(stage 1) 직접 수혜 가설" in prompt and "(stage 2) 2차 파생 가설" in prompt
-    assert "[t01] (stage 1) 테마사 (000003) | 테마: 테마A, 테마B" in prompt
+    assert "[t01] (stage 1) 테마사 (000003) | 가설: 직접 수혜 가설 | 테마: 테마A, 테마B" in prompt
     assert "편입 사유: [테마A] 이유1" in prompt and "편입 사유: [테마B] 이유2" in prompt
+
+
+def test_pack_theme_filter_candidate_line_shows_own_hypothesis_when_stage_ambiguous():
+    # 같은 stage 에 가설이 두 개면 stage 번호만으로는 후보가 어느 가설에 매칭됐는지
+    # 알 수 없다 — 후보 자신의 hypothesis 를 그 줄에 직접 박아야 한다.
+    plan = NewsPlan(
+        event_summary="사건", polarity="positive",
+        scenario_probes=[ScenarioProbe(stage=1, hypothesis="가설 A", query="qA"),
+                          ScenarioProbe(stage=1, hypothesis="가설 B", query="qB")],
+    )
+    hit_a = ThemeCandidate(tid="t01", stage=1, hypothesis="가설 A", ticker="000003",
+                           name="테마사A", company_id=3, market="KOSDAQ",
+                           matched_themes=["테마A"], matched_reasons=["이유1"])
+    hit_b = ThemeCandidate(tid="t02", stage=1, hypothesis="가설 B", ticker="000004",
+                           name="테마사B", company_id=4, market="KOSDAQ",
+                           matched_themes=["테마B"], matched_reasons=["이유2"])
+    prompt = pack_theme_filter_context(plan, [hit_a, hit_b])
+    line_a = next(line for line in prompt.splitlines() if line.startswith("[t01]"))
+    line_b = next(line for line in prompt.splitlines() if line.startswith("[t02]"))
+    assert "가설 A" in line_a and "가설 B" not in line_a
+    assert "가설 B" in line_b and "가설 A" not in line_b
 
 
 def test_pack_judge_assigns_scoped_eids_and_marks_promotion():
@@ -82,3 +103,14 @@ def test_pack_judge_assigns_scoped_eids_and_marks_promotion():
     assert "트랙 공급" in packed.prompt and "트랙 시나리오 테마" in packed.prompt
     assert "weak(승격)" in packed.prompt
     assert "매칭 아이템: HBM" in packed.prompt
+
+
+def test_pack_judge_shows_stage_label_only_for_staged_candidates():
+    c1 = Candidate(ticker="000002", name="공급사", company_id=2, track="supply", market="KOSPI")
+    c2 = Candidate(ticker="000003", name="테마사", company_id=3, track="theme", market="KOSDAQ",
+                   stage=2)
+    packed = pack_evaluator_context(NEWS, [ROOT], PLAN, [c1, c2])
+    line1 = next(line for line in packed.prompt.splitlines() if line.startswith("[후보 c01]"))
+    line2 = next(line for line in packed.prompt.splitlines() if line.startswith("[후보 c02]"))
+    assert "차 파급" not in line1
+    assert "2차 파급" in line2

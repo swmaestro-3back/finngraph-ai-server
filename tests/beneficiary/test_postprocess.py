@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from beneficiary.models import Candidate, EvaluatorInsight, EvaluatorOutput
+from beneficiary.models import Candidate, EvaluatorInsight, EvaluatorOutput, TrackOutcome
 from beneficiary.agent.utils.postprocess import validate_and_rank
+from beneficiary.agent.nodes.evaluator import build_track_note
 
 
 def _candidate(cid, ticker, market):
@@ -57,3 +58,37 @@ def test_rules_reject_unknown_cid_dup_and_citationless_rationale():
     assert len(items) == 2
     assert items[0].evidence_ids == ["e01"]
     assert items[1].confidence == "low"
+
+
+def test_track_note_distinguishes_empty_from_failed():
+    note = build_track_note(TrackOutcome(status="no_pool"), TrackOutcome())
+    assert "공급망" in note and "찾지 못해" in note
+
+    note = build_track_note(TrackOutcome(), TrackOutcome(error="boom"))
+    assert "시나리오 테마" in note and "실패" in note
+
+    assert build_track_note(TrackOutcome(), TrackOutcome()) is None
+
+
+def test_track_note_is_appended_to_every_caveat():
+    from beneficiary.models import (
+        Candidate, EvaluatorInsight, EvaluatorOutput, Evidence,
+    )
+
+    candidate = Candidate(ticker="000001", name="회사", company_id=1, track="theme",
+                          market="KOSPI", cid="c01")
+    candidate.evidence = [Evidence(type="theme", text="[테마A] 사유", eid="e01")]
+    evaluation = EvaluatorOutput(
+        event_interpretation="해석",
+        insights=[EvaluatorInsight(candidate_id="c01", impact="benefit",
+                                   confidence="medium",
+                                   rationale="근거 [e01] 에 따라 수혜다.",
+                                   evidence_ids=["e01"], caveats="기존 캐비앗")],
+    )
+
+    items = validate_and_rank(evaluation, {"c01": candidate}, {"c01": {"e01"}},
+                              track_note="공급망 축에서는 후보를 찾지 못했습니다.")
+
+    assert items, "인용이 유효한 인사이트는 살아남아야 한다"
+    assert all("공급망 축에서는" in item.caveats for item in items)
+    assert "기존 캐비앗" in items[0].caveats   # 덮어쓰지 않고 접미한다
