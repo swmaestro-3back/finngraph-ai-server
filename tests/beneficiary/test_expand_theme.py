@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from beneficiary.models import ScenarioProbe
+from beneficiary.models import ScenarioProbe, ThemeCandidate
 from beneficiary.agent.tracks.theme.nodes import (
+    MATCHED_REASONS_CAP,
+    MATCHED_THEMES_CAP,
+    THEME_POOL_CAP,
     merge_theme_rows,
     truncate_and_assign_tids,
 )
@@ -51,3 +54,37 @@ def test_truncate_sorts_stage_first_then_score_then_ticker():
     ordered = truncate_and_assign_tids(hits)
     assert [h.ticker for h in ordered] == ["000200", "000300", "000100"]
     assert [h.tid for h in ordered] == ["t01", "t02", "t03"]
+
+
+def test_matched_themes_and_reasons_capped_across_probes():
+    # 티커 하나에 캡을 넘는 서로 다른 테마·사유를 여러 probe 에 걸쳐 공급한다.
+    p1_rows = [_row("005930", theme=f"테마{i}", reason=f"사유{i}", score=0.9) for i in range(3)]
+    p2_rows = [_row("005930", theme=f"테마{i}", reason=f"사유{i}", score=0.8) for i in range(3, 7)]
+    merged = merge_theme_rows([(P1, p1_rows), (P2, p2_rows)])
+
+    assert len(merged) == 1
+    hit = merged[0]
+    assert len(hit.matched_themes) == MATCHED_THEMES_CAP
+    assert len(hit.matched_reasons) == MATCHED_REASONS_CAP
+
+
+def test_pool_cap_truncation_keeps_sort_selected_survivors_and_assigns_tids_after_cut():
+    total = THEME_POOL_CAP + 5
+    # 인덱스가 클수록 점수가 높다 — 정렬 전에 원본 순서로 앞 60개를 잘랐다면
+    # 정확히 반대(가장 낮은 점수 60개)가 살아남는다.
+    hits = [
+        ThemeCandidate(
+            tid=None, stage=1, hypothesis="가설", ticker=f"{i:06d}", name="회사",
+            company_id=1, market="KOSPI", score=float(i),
+        )
+        for i in range(total)
+    ]
+    ordered = truncate_and_assign_tids(hits)
+
+    assert len(ordered) == THEME_POOL_CAP
+    assert ordered[0].tid == "t01"
+    assert ordered[-1].tid == f"t{THEME_POOL_CAP:02d}"
+
+    survivor_tickers = {h.ticker for h in ordered}
+    expected_survivors = {f"{i:06d}" for i in range(total - THEME_POOL_CAP, total)}
+    assert survivor_tickers == expected_survivors
