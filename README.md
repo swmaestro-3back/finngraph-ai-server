@@ -22,7 +22,7 @@ source news and sentences) are fetched lazily per relationship.
 | `GET /companies/{ticker}` | Subgraph within 3 hops of the given company |
 | `GET /themes/{name}` | Subgraph centered on a theme |
 | `GET /relationships/{element_id}` | Full detail (provenance) of a single relationship |
-| `GET /news/{news_id}/beneficiaries` | 뉴스 사건의 수혜 종목을 극성 2트랙(공급망/경쟁사)으로 추천. 매 호출 ~20초 동기 생성 (캐시 없음) |
+| `GET /news/{news_id}/beneficiaries` | 호재 뉴스의 수혜 종목을 병렬 2트랙(공급망 / 시나리오 테마)으로 추천. 악재는 not_positive 로 정상 종료. 매 호출 ~20초 동기 생성 (캐시 없음) |
 
 ## Directory Structure
 
@@ -50,9 +50,10 @@ finngraph-kg-api/
 │   │   ├── repository.py         # Postgres·Neo4j 조회
 │   │   ├── models.py             # 도메인 모델 + LLM 구조화 출력 계약
 │   │   └── agent/                # LangGraph 본체 — FastAPI 를 모른다
-│   │       ├── workflow.py       # 그래프 조립·라우팅
+│   │       ├── workflow.py       # 그래프 조립·라우팅 (팬아웃/팬인)
 │   │       ├── state.py
-│   │       ├── nodes/            # 각 단계 노드 (트랙별 expand/filter 포함)
+│   │       ├── nodes/            # 공통 단계 노드 (planner/candidate_selector/finance_collector/evaluator)
+│   │       ├── tracks/           # 병렬 트랙 서브그래프 (supply/, theme/ — 각자 nodes·state·graph)
 │   │       ├── prompts/          # 시스템 프롬프트 + PROMPT_VERSION
 │   │       └── utils/            # Bedrock 러너블·프롬프트 패킹·출력 후처리
 │   ├── core/
