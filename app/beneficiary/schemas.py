@@ -34,7 +34,7 @@ class BeneficiaryItemOut(BaseModel):
 class BeneficiaryResponse(BaseModel):
     news_id: int
     rep_news_id: int
-    status: str  # ok | no_root_companies | no_pool | no_candidates | no_beneficiaries
+    status: str  # ok | no_root_companies | not_positive | no_pool | no_candidates | no_beneficiaries
     reason: str | None = None  # status != ok 일 때 어디서 왜 멈췄는지 한 문장
     event_interpretation: str | None = None
     items: list[BeneficiaryItemOut] = []

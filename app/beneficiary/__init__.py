@@ -1,6 +1,7 @@
 """공급망 수혜주(beneficiary) 에이전트 — 뉴스 사건 → 수혜 종목 추천 피처.
 
-설계: docs/superpowers/specs/2026-08-30-beneficiary-agent-design.md (로컬 전용).
+설계: docs/superpowers/specs/2026-09-01-positive-only-parallel-tracks-design.md
+(로컬 전용). 2026-08-30 판을 대체한다 — 악재(경쟁사) 트랙은 폐기됐다.
 
 패키지 경계 (바깥 → 안 순서, 역방향 의존 금지):
     api/routes/news.py → service → agent/ → repository → core

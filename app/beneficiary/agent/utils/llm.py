@@ -1,8 +1,9 @@
-"""beneficiary Bedrock 호출 계층 — LCEL 체인 3개.
+"""beneficiary Bedrock 호출 계층 — LCEL 체인 4개.
 
 - 체인 형태: ChatPromptTemplate | Chat.with_structured_output(pydantic).with_retry()
-- 실행당 LLM 호출은 3회: plan → filter_supply → evaluate.
-  체인 조립은 lru_cache 로 프로세스당 1회다.
+- 실행당 LLM 호출은 최대 4회: plan → (filter_supply ∥ filter_theme) → evaluate.
+  두 트랙은 병렬이고 각자 자기 filter 를 한 번 부른다 — 트랙이 조기 종료하거나
+  장애로 강등되면 그만큼 줄어든다. 체인 조립은 lru_cache 로 프로세스당 1회다.
 - 노드는 이 모듈을 `from beneficiary.agent.utils import llm` 으로 들고 다닌다 —
   테스트가 모듈 속성을 monkeypatch 하는 시임(seam)이다. 그래서 체인을 그대로
   노출하지 않고, packer 가 렌더한 프롬프트 문자열을 받는 얇은 async 래퍼를

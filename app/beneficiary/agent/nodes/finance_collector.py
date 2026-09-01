@@ -1,9 +1,14 @@
 """finance_collector 노드 — 확정 후보에 근거·재무(TableRAG)를 적재한다.
 
 TableRAG 는 고정 쿼리 테이블 패킹이다 — text2SQL 금지(스키마·체크리스트 고정).
-affirmed 근거 0건 공급 후보는 제거한다: entities_relations 뷰가 polarity 를
-거르지 않아 denied/terminated 행만으로 만들어진 간선이 후보를 만들 수 있는데,
-그 후보는 인용 가능한 [eNN] 이 없어 심사가 접지되지 않는다(스펙 §4.7).
+
+근거 0건 후보는 제거한다: entities_relations 뷰가 polarity 를 거르지 않아
+denied/terminated 행만으로 만들어진 간선이 후보를 만들 수 있는데, 그 후보는
+인용 가능한 [eNN] 이 없어 심사가 접지되지 않는다(스펙 §4.7).
+
+제거 판정은 두 축을 모두 적재한 뒤 evidence 전체로 한다(스펙 §7.4) — 실제로
+걸리는 건 순수 supply 후보뿐이다: _load_theme_evidence 가 트리거 뉴스를 항상
+1건 넣으므로 theme·both 후보는 이 게이트에 걸릴 수 없다.
 """
 
 from __future__ import annotations
