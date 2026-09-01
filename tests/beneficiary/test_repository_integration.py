@@ -296,21 +296,49 @@ async def test_search_theme_reasons_returns_listed_domestic_only(neo4j_conn):
     assert rows == sorted(rows, key=lambda r: -r["score"])
 
 
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_search_theme_reasons_honors_exclusions(neo4j_conn):
+@pytest_asyncio.fixture
+async def scenario_reason_vector(seed):
+    """search_theme_reasons exclusion 테스트 전용 픽스처.
+
+    실 벌크 데이터는 Company.is_active 가 전혀 채워져 있지 않아(Task 6 보고서
+    참고 — finngraph-etl 쪽 데이터 갭, 이 계층의 문제가 아니다)
+    search_theme_reasons 의 상장 필터를 하나도 통과하지 못한다. is_active 를
+    실제로 세팅하는 seed 픽스처의 root 기업 테마1 편입 사유에 실 Titan
+    임베딩을 심어, 필터를 전부 만족하는 매치로 exclusion 로직을 검증한다.
+    """
+
     from beneficiary.agent.utils import embed
 
-    vector = (await embed.embed_queries(["반도체 HBM"]))[0]
+    reason_text = f"초고압 변압기 및 전력기기 전문 제조 {seed['uid']}"
+    vector = (await embed.embed_queries([reason_text]))[0]
+    await neo4j_client.execute(
+        """
+MATCH (c:Company {name: $name})-[b:BELONGS_TO]->(t:Theme {name: $theme})
+SET b.reason = $reason, b.reason_embedding = $embedding
+""",
+        {"name": seed["root_name"], "theme": seed["theme1"],
+         "reason": reason_text, "embedding": vector},
+    )
+    return vector
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_search_theme_reasons_honors_exclusions(seed, scenario_reason_vector):
+    # min_score=0.9: 질의 임베딩이 시드된 reason_embedding 과 동일 텍스트에서 나와
+    # 코사인이 1.0 에 근접(관측 0.9998) — 0.0 으로 낮추지 않고도 점수 게이트를
+    # 함께 검증하면서, 실 벌크 데이터의 최대 관측 점수(~0.77, is_active 갭으로
+    # 어차피 필터 탈락)보다 한참 위라 오탐 없이 seed 매치만 걸린다.
     baseline = await repository.search_theme_reasons(
-        query_vector=vector, exclude_names=[], exclude_tickers=[],
-        min_score=0.0, limit=5, over_fetch=50,
+        query_vector=scenario_reason_vector, exclude_names=[], exclude_tickers=[],
+        min_score=0.9, limit=5, over_fetch=50,
     )
     assert baseline, "기준 결과가 없으면 이 테스트는 아무것도 검증하지 못한다"
+    assert seed["root_ticker"] in {row["ticker"] for row in baseline}
 
     excluded = await repository.search_theme_reasons(
-        query_vector=vector, exclude_names=[baseline[0]["name"]],
-        exclude_tickers=[baseline[0]["ticker"]],
-        min_score=0.0, limit=5, over_fetch=50,
+        query_vector=scenario_reason_vector, exclude_names=[seed["root_name"]],
+        exclude_tickers=[seed["root_ticker"]],
+        min_score=0.9, limit=5, over_fetch=50,
     )
-    assert baseline[0]["ticker"] not in {row["ticker"] for row in excluded}
+    assert seed["root_ticker"] not in {row["ticker"] for row in excluded}
