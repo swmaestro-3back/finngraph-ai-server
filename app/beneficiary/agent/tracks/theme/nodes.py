@@ -123,11 +123,15 @@ async def expand_theme(state: ThemeTrackState) -> dict:
 
     raw_total = sum(len(rows) for rows in rows_per_probe)
     hits = truncate_and_assign_tids(merge_theme_rows(list(zip(probes, rows_per_probe))))
-    # 임계값이 전부 잘라냈는지, 애초에 후보가 없었는지를 구분해 남긴다 —
-    # 벡터 검색은 실패가 조용하다(스펙 §4.4).
+    # 벡터 검색은 실패가 조용하다 — 회수 0이 "질의가 빗나갔다"인지 "그래프에
+    # 아무것도 없다"인지 구분할 단서를 남긴다(스펙 §4.4·§5.5).
+    # raw_total 은 임계값만의 통계가 아니다: Cypher 가 임계값·시장·상장·제외
+    # 목록·LIMIT 을 한 번에 걸어 반환한 행 수다. 임계값 단독 통과 수는 여기서
+    # 알 수 없으므로 그렇게 읽히지 않게 이름을 붙인다.
     logger.info(
-        "테마 검색: probe %d개 → 임계값(%.2f) 통과 %d행 → 병합 후 %d개",
-        len(probes), MIN_SCORE, raw_total, len(hits),
+        "테마 검색: probe %d개 → 필터 통과 %d행 (임계값 %.2f + 시장·상장·제외·상한)"
+        " → 병합 후 %d개",
+        len(probes), raw_total, MIN_SCORE, len(hits),
     )
     return {"hits": hits}
 
