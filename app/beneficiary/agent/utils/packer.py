@@ -21,7 +21,7 @@ from beneficiary.models import (
 SHOWN_ITEMS_CAP = 10  # 한 줄에 노출하는 아이템 수 상한
 DESCRIPTION_CAP = 100  # 테마 설명 요약 길이
 
-TRACK_LABELS = {"supply": "공급", "rival": "경쟁"}
+TRACK_LABELS = {"supply": "공급", "theme": "시나리오 테마", "both": "공급망+테마"}
 
 
 def _news_block(news: NewsContext) -> list[str]:

@@ -108,19 +108,24 @@ class Candidate:
     ticker: str
     name: str
     company_id: int | None
-    track: Literal["supply"]
+    track: Literal["supply", "theme", "both"]
     relation_lines: list[str] = field(default_factory=list)
     evidence: list[Evidence] = field(default_factory=list)
     matched_items: list[str] = field(default_factory=list)  # 상한 5
     relevance: str = "strong"  # 원 등급 — 승격돼도 유지
     promoted: bool = False  # 쿼터 미달로 weak 에서 승격됐는가
-    via_themes: list[str] = field(default_factory=list)  # rival 전용
-    reasons: list[str] = field(default_factory=list)  # rival 전용 — finance_collector 근거 재료
     source_edges: list[SupplyChainCandidate] = field(default_factory=list)  # supply 전용, gid 오름차순
     market: str | None = None
     financials: list[dict] = field(default_factory=list)
     valuation: dict | None = None
     cid: str | None = None
+
+    # theme·both 전용
+    hypothesis: str | None = None
+    stage: int | None = None
+    theme_score: float | None = None
+    matched_themes: list[str] = field(default_factory=list)
+    matched_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -81,8 +81,8 @@ async def test_supply_candidate_with_zero_affirmed_evidence_is_dropped(monkeypat
 
 async def test_rival_candidate_gets_news_and_theme_evidence():
     candidate = Candidate(ticker="000003", name="경쟁사", company_id=3, track="rival",
-                          market="KOSPI", via_themes=["테마A"],
-                          reasons=["대체 생산 경쟁", "동일 제품"])
+                          market="KOSPI", matched_themes=["테마A"],
+                          matched_reasons=["대체 생산 경쟁", "동일 제품"])
     result = await collector_module.collect_financials({"news": NEWS, "candidates": [candidate]})
     kept = result["candidates"][0]
     types = [e.type for e in kept.evidence]

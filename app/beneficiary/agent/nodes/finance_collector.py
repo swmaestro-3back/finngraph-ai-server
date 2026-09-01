@@ -64,7 +64,7 @@ def _load_rival_evidence(candidate: Candidate, news) -> None:
     ))
     # ② 테마 편입 사유 — 링크 없는 그래프 유래 근거. reason 은 fetch_theme_rivals
     #    가 "[테마명] 사유" 형태로 만들어 테마 귀속이 보존된다(스펙 §4.7 형식).
-    for reason in candidate.reasons:
+    for reason in candidate.matched_reasons:
         candidate.evidence.append(Evidence(type="theme", text=reason))
 
 

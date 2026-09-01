@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import logging
 
-from beneficiary.models import Candidate, SupplyChainCandidate
+from beneficiary.models import Candidate, SupplyChainCandidate, ThemeCandidate, TrackOutcome
 from core import MARKETS
 from beneficiary.agent.state import GraphState
 
 logger = logging.getLogger(__name__)
 
 QUOTA_PER_MARKET = 2  # 쿼터 판정 기준 (strong 기업 수)
-POOL_PER_MARKET = 3  # 심사 풀 시장당 상한
+POOL_PER_TRACK_PER_MARKET = 2  # 트랙 기본 슬롯
+POOL_PER_MARKET = 4  # 시장 총 상한 — 한 트랙이 못 채우면 다른 쪽이 흡수
 MATCHED_ITEMS_CAP = 5
 
 
@@ -64,7 +65,9 @@ def _build_supply_candidate(ticker: str, entry: dict, promoted: bool) -> Candida
     )
 
 
-def select_supply_candidates(edges: list[SupplyChainCandidate]) -> list[Candidate]:
+def select_supply_candidates(
+    edges: list[SupplyChainCandidate], cap_per_market: int
+) -> list[Candidate]:
     folded = _fold_supply(edges)
     strong_entries = {t: e for t, e in folded.items() if e["strong"]}
     weak_entries = {t: e for t, e in folded.items() if not e["strong"] and e["weak"]}
@@ -82,19 +85,102 @@ def select_supply_candidates(edges: list[SupplyChainCandidate]) -> list[Candidat
                 key=lambda pair: _supply_sort_key(pair[1]),
             )
             for ticker, entry in promotables:
-                if len(pool) >= POOL_PER_MARKET:
+                if len(pool) >= cap_per_market:
                     break
                 pool.append(_build_supply_candidate(ticker, entry, promoted=True))
-        selected.extend(pool[:POOL_PER_MARKET])
+        selected.extend(pool[:cap_per_market])
+    return selected
+
+
+def _theme_sort_key(hit: ThemeCandidate):
+    """stage 우선 — 2차 파급이 우연한 고유사도로 1차를 앞서지 않게 한다."""
+    return (hit.stage, -hit.score, hit.ticker)
+
+
+def _build_theme_candidate(hit: ThemeCandidate, promoted: bool) -> Candidate:
+    return Candidate(
+        ticker=hit.ticker, name=hit.name, company_id=hit.company_id,
+        track="theme",
+        relation_lines=[f"시나리오(stage {hit.stage}): {hit.hypothesis}"],
+        matched_items=[], relevance="weak" if promoted else "strong",
+        promoted=promoted, market=hit.market,
+        hypothesis=hit.hypothesis, stage=hit.stage, theme_score=hit.score,
+        matched_themes=hit.matched_themes, matched_reasons=hit.matched_reasons,
+    )
+
+
+def merge_into_supply(candidate: Candidate, hit: ThemeCandidate) -> None:
+    """두 축이 같은 기업을 지목했다 — 근거를 합치고 both 로 표시한다.
+
+    등급은 올리지 않는다. 판단은 evaluator 가 하고 코드는 근거만 싣는다(스펙 §7.2).
+    """
+
+    candidate.track = "both"
+    candidate.hypothesis = hit.hypothesis
+    candidate.stage = hit.stage
+    candidate.theme_score = hit.score
+    candidate.matched_themes = hit.matched_themes
+    candidate.matched_reasons = hit.matched_reasons
+    candidate.relation_lines.append(f"시나리오(stage {hit.stage}): {hit.hypothesis}")
+
+
+def select_theme_candidates(
+    hits: list[ThemeCandidate], taken: dict[str, Candidate], cap_per_market: int
+) -> list[Candidate]:
+    """supply 선발분에 없는 티커만 자기 슬롯에 채운다 — 겹치면 병합하고 건너뛴다."""
+
+    selected: list[Candidate] = []
+    for market in MARKETS:
+        pool: list[Candidate] = []
+        strong = sorted([h for h in hits if h.market == market and h.relevance == "strong"],
+                        key=_theme_sort_key)
+        weak = sorted([h for h in hits if h.market == market and h.relevance == "weak"],
+                      key=_theme_sort_key)
+        for hit in strong:
+            if hit.ticker in taken:
+                merge_into_supply(taken[hit.ticker], hit)
+                continue
+            if len(pool) >= cap_per_market:
+                break
+            pool.append(_build_theme_candidate(hit, promoted=False))
+        if len(pool) < QUOTA_PER_MARKET:
+            for hit in weak:
+                if hit.ticker in taken or len(pool) >= cap_per_market:
+                    continue
+                pool.append(_build_theme_candidate(hit, promoted=True))
+        selected.extend(pool[:cap_per_market])
     return selected
 
 
 async def select_candidates(state: GraphState) -> dict:
-    if state.get("edges"):
-        candidates = select_supply_candidates(state["edges"])
-    else:
-        candidates = []
-    logger.info("후보 확정: %d개", len(candidates))
+    supply_outcome = state.get("supply_outcome") or TrackOutcome()
+    theme_outcome = state.get("theme_outcome") or TrackOutcome()
+    edges = state.get("edges") or []
+    hits = state.get("theme_hits") or []
+
+    # 두 축이 모두 장애면 "후보 없음"이 아니라 장애다 — 503 으로 나가야 한다(§7.0).
+    if not edges and not hits and supply_outcome.error and theme_outcome.error:
+        return {"candidates": [],
+                "error": f"supply: {supply_outcome.error} / theme: {theme_outcome.error}"}
+
+    if not edges and not hits:
+        reasons = [o.reason for o in (supply_outcome, theme_outcome) if o.reason]
+        return {"candidates": [], "status": "no_pool",
+                "reason": " ".join(reasons) or "탐색된 후보 기업이 없습니다."}
+
+    # 한 트랙이 비면 다른 쪽이 시장 총 상한까지 흡수한다 — 부분 성공이 자동
+    # 처리되어 별도 분기가 필요 없다(§7.1).
+    supply_cap = POOL_PER_TRACK_PER_MARKET if hits else POOL_PER_MARKET
+    theme_cap = POOL_PER_TRACK_PER_MARKET if edges else POOL_PER_MARKET
+
+    # supply 를 먼저 뽑는다 — 그래프 간선 근거가 벡터 유사도보다 단단하다(§7.2).
+    supply = select_supply_candidates(edges, supply_cap)
+    taken = {c.ticker: c for c in supply}
+    theme = select_theme_candidates(hits, taken, theme_cap)
+
+    candidates = supply + theme
+    logger.info("후보 확정: supply %d + theme %d = %d개",
+                len(supply), len(theme), len(candidates))
     if not candidates:
         return {"candidates": [], "status": "no_candidates",
                 "reason": "선별 결과 심사할 만한 후보 기업이 남지 않았습니다."}

@@ -71,14 +71,14 @@ def test_pack_judge_assigns_scoped_eids_and_marks_promotion():
                    matched_items=["HBM"], relation_lines=["공급사 →공급→ 루트기업"],
                    evidence=[Evidence(type="disclosure", text="근거1", date="2026-08-01"),
                              Evidence(type="news", text="근거2", date="2026-08-02")])
-    c2 = Candidate(ticker="000003", name="경쟁사", company_id=3, track="rival", market="KOSDAQ",
-                   relevance="weak", promoted=True, via_themes=["테마A"],
+    c2 = Candidate(ticker="000003", name="테마사", company_id=3, track="theme", market="KOSDAQ",
+                   relevance="weak", promoted=True, matched_themes=["테마A"],
                    evidence=[Evidence(type="news", text="트리거", link="https://n.example/1")])
     packed = pack_evaluator_context(NEWS, [ROOT], PLAN, [c1, c2])
     assert list(packed.by_cid) == ["c01", "c02"]
     assert packed.eids_by_cid["c01"] == {"e01", "e02"}
     assert packed.eids_by_cid["c02"] == {"e03"}  # eid 는 전역 연번, 스코프는 후보별
     assert c1.cid == "c01" and c1.evidence[0].eid == "e01"
-    assert "트랙 공급" in packed.prompt and "트랙 경쟁" in packed.prompt
+    assert "트랙 공급" in packed.prompt and "트랙 시나리오 테마" in packed.prompt
     assert "weak(승격)" in packed.prompt
     assert "매칭 아이템: HBM" in packed.prompt

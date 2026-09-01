@@ -98,7 +98,7 @@ def _item_out(item: RankedItem) -> BeneficiaryItemOut:
         market=candidate.market,
         track=candidate.track,
         matched_items=candidate.matched_items,
-        via_themes=candidate.via_themes,
+        matched_themes=candidate.matched_themes,
         impact=item.impact,
         confidence=item.confidence,
         rationale=item.rationale,

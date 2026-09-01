@@ -20,9 +20,9 @@ class BeneficiaryItemOut(BaseModel):
     ticker: str
     name: str | None = None
     market: str | None = None
-    track: str  # supply | rival
+    track: str  # supply | theme | both
     matched_items: list[str] = []
-    via_themes: list[str] = []
+    matched_themes: list[str] = []
     impact: str  # benefit 고정
     confidence: str
     rationale: str
