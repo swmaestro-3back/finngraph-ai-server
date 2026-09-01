@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     neo4j_username: str
     neo4j_password: str
     neo4j_database: str
+    # BELONGS_TO.reason_embedding 에 걸린 관계 벡터 인덱스 이름 (Neo4j 5.18+)
+    neo4j_reason_vector_index: str = "belongs_to_reason_embedding"
 
     # === Postgres (finngraph-etl 이 소유하는 ETL DB) ===
     # 인사이트 기능은 원장(relation_sources)·재무를 RDB 에서 직접 읽는다.
@@ -32,6 +34,9 @@ class Settings(BaseSettings):
     bedrock_evaluator_model: str = "us.anthropic.claude-sonnet-4-6"
     # beneficiary 에이전트의 계획·선별용 경량 모델 (버전 접미사 필수)
     bedrock_light_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    # theme 트랙의 reason 벡터 검색용 — finngraph-etl 이 reason_embedding 을 만들 때
+    # 쓴 모델과 반드시 같아야 한다(pipelines/common/config.py). 다르면 벡터가 비교 불가능하다.
+    bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
 
     # === LangSmith (LLM·워크플로우 트레이싱) ===
     langsmith_tracing: bool = False
