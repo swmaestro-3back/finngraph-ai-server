@@ -70,6 +70,19 @@ def test_sanitize_dedups_probes_by_stage_and_query():
     assert [(p.stage, p.query) for p in probes] == [(1, "변압기"), (2, "변압기")]
 
 
+def test_sanitize_drops_probe_with_blank_hypothesis():
+    """가설이 공백이면 query 가 멀쩡해도 버린다 — 가설은 evaluator 가 대조할 문장이다."""
+    plan = NewsPlan(
+        event_summary="s", polarity="positive",
+        scenario_probes=[
+            ScenarioProbe(stage=1, hypothesis="   ", query="변압기"),  # 빈 가설
+            ScenarioProbe(stage=1, hypothesis="h", query="전선"),
+        ],
+    )
+    probes = sanitize_plan(plan).scenario_probes
+    assert [(p.hypothesis, p.query) for p in probes] == [("h", "전선")]
+
+
 def test_sanitize_caps_probes_at_four():
     plan = NewsPlan(
         event_summary="s", polarity="positive",

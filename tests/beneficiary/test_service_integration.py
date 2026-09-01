@@ -50,7 +50,9 @@ def llm_stub(monkeypatch):
     async def fake_filter(prompt):
         state["filter_calls"] += 1
         import re
-        ids = re.findall(r"\[([gk]\d+)\]", prompt)
+        # gNN = 공급 간선 id, tNN = 테마 히트 id. 같은 스텁이 두 트랙의
+        # filter 프롬프트를 모두 받으므로 둘 다 잡는다.
+        ids = re.findall(r"\[([gt]\d+)\]", prompt)
         return FilterOutput(strong=ids, weak=[])
 
     async def fake_evaluate(prompt):

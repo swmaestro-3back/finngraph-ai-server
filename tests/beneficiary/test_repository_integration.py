@@ -14,10 +14,14 @@
         적재) — 시장·상장 필터는 Cypher 가 수행한다.
         SUPPLIES_TO: 공급사기업→루트기업(아이템·카운트 보유), 비상장공급→루트기업,
         상폐공급→루트기업(is_active 게이트 확인용),
-        상대기업→루트기업(뉴스 당사자 제외 확인용), 경쟁사기업→상대기업(경쟁사의
-        유출 아이템 원천). INVESTS_IN: 루트기업→자회사기업(이웃 제외 확인용).
-        Theme: 테마1(멤버 3: 루트 기업·경쟁사·자회사), 테마2(멤버 2: 루트 기업·경쟁사) —
-        멤버 수 오름차순 정렬 확인용. BELONGS_TO 에 reason.
+        상대기업→루트기업(뉴스 당사자 제외 확인용), 경쟁사기업→상대기업.
+        Theme: 테마1, 테마2 — BELONGS_TO 에 reason(+ reason_embedding).
+        search_theme_reasons 는 테마1 의 reason 벡터만 쓴다.
+
+        경쟁사기업·자회사기업·INVESTS_IN·테마2 는 악재 트랙과 함께 삭제된
+        fetch_neighbor_names / fetch_theme_rivals 를 위해 심었던 행이다. 지금은
+        어떤 테스트도 이들을 단언하지 않지만, 무해하고 다른 시드 행과 얽혀 있어
+        그대로 둔다.
 """
 
 from __future__ import annotations
@@ -276,8 +280,14 @@ async def two_reason_vectors(seed):
     finngraph-etl 쪽 데이터 갭) 상장 필터를 하나도 통과하지 못해, 실 그래프를
     그대로 조회하는 버전은 결과가 항상 비어 모든 assert 가 공허하게 참이
     됐다. seed 의 root·rival 두 기업의 theme1 편입 사유에 서로 다른 실
-    Titan 임베딩을 심어(주제가 달라 점수가 실제로 벌어진다 — 관측
-    0.9999 vs 0.7496) ORDER BY 가 진짜로 검증되게 한다.
+    Titan 임베딩을 심어(주제가 달라 점수가 실제로 벌어진다) ORDER BY 가
+    진짜로 검증되게 한다.
+
+    점수는 실행마다 달라진다 — 임베딩 텍스트에 매 실행 새로 뽑는 uid 가
+    들어가기 때문이다. root 는 질의와 동일 텍스트라 ~0.9999 로 고정이지만
+    rival 은 관측 0.765~0.774 범위에서 움직인다. **이 숫자로 MIN_SCORE 를
+    조정하지 말 것** — 실제 임계값 근거는 theme/nodes.py 의 라이브 인덱스
+    실측 주석이다. 여기서 필요한 건 "두 값이 서로 다르다"뿐이다.
     """
 
     from beneficiary.agent.utils import embed
@@ -307,10 +317,10 @@ SET b.reason = $reason, b.reason_embedding = $embedding
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_search_theme_reasons_returns_listed_domestic_only(seed, two_reason_vectors):
-    # min_score=0.6: root(~0.9999)·rival(~0.7496) 둘 다 통과하면서, 두 값이 실제로
-    # 다르므로 ORDER BY score DESC 검증이 "빈 리스트라 항상 참"이 아니라 진짜로
-    # 순서를 강제한다. 질의 벡터가 root 사유와 동일 텍스트에서 나왔으므로
-    # root 가 반드시 1위여야 한다.
+    # min_score=0.6: root(~0.9999)·rival(관측 0.765~0.774, uid 때문에 실행마다
+    # 달라진다) 둘 다 통과하면서, 두 값이 실제로 다르므로 ORDER BY score DESC
+    # 검증이 "빈 리스트라 항상 참"이 아니라 진짜로 순서를 강제한다. 질의 벡터가
+    # root 사유와 동일 텍스트에서 나왔으므로 root 가 반드시 1위여야 한다.
     rows = await repository.search_theme_reasons(
         query_vector=two_reason_vectors, exclude_names=[], exclude_tickers=[],
         min_score=0.6, limit=10, over_fetch=50,
