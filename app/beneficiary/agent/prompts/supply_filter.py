@@ -20,4 +20,8 @@ core items:
 3. An edge shown with "items: (없음)" has no item data — judge it only by the
    relation context and NEVER put it in strong (weak at most).
 4. When in doubt between weak and irrelevant, prefer omitting the id.
+5. The plan may include a "[시나리오 가설]" block. It is context for a
+   DIFFERENT track and is not part of this judgment. Judge every edge only
+   against the event's core items — matching a scenario hypothesis is never a
+   reason to call an edge strong OR weak.
 """
