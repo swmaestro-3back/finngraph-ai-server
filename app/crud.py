@@ -18,7 +18,7 @@ def _stock_query(hop: int) -> LiteralString:
     return cast(
         LiteralString,
         f"""
-MATCH (s:Stock {{ticker: $key}})
+MATCH (s:Company {{ticker: $key}})
 OPTIONAL MATCH path = (s)-[*1..{hop}]->(m)
 RETURN s AS center, collect(path) AS paths
 """,
@@ -49,7 +49,7 @@ RETURN n AS center, collect(path) AS paths
 
 THEME_QUERY: LiteralString = """
 MATCH (t:Theme {name: $key})
-OPTIONAL MATCH path = (s:Stock)-[:BELONGS_TO]->(t)
+OPTIONAL MATCH path = (s:Company)-[:BELONGS_TO]->(t)
 RETURN t AS center, collect(path) AS paths
 """
 
@@ -60,7 +60,7 @@ def _theme_query(hop: int) -> LiteralString:
         LiteralString,
         f"""
 MATCH (t:Theme {{name: $key}})
-OPTIONAL MATCH mpath = (s:Stock)-[:BELONGS_TO]->(t)
+OPTIONAL MATCH mpath = (s:Company)-[:BELONGS_TO]->(t)
 OPTIONAL MATCH epath = (s)-[*1..{hop - 1}]->(m)
 RETURN t AS center, collect(mpath) + collect(epath) AS paths
 """,
