@@ -46,10 +46,8 @@ finngraph-kg-api/
 │   │   ├── config.py         # Settings loaded from .env (pydantic-settings)
 │   │   ├── db.py             # Neo4j async driver (singleton)
 │   │   └── logger.py         # Logging setup
-│   └── scripts/
-│       └── seed.py           # Seed data for Neo4j
 ├── Dockerfile                # API image build
-├── docker-compose.yml        # api + neo4j services
+├── docker-compose.yml        # api service (Neo4j는 ETL 스택 공유)
 ├── pyproject.toml            # Project metadata & dependencies (uv)
 └── .env.example              # Environment variable template
 ```

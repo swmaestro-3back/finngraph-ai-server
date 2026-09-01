@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import LiteralString, cast
 
 from core import neo4j_database
-from schemas import GraphResponse, RelationshipDetail
+from schemas import GraphResponse, NewsGraphResponse, RelationshipDetail
 
 
 # DAO
@@ -18,7 +18,7 @@ def _stock_query(hop: int) -> LiteralString:
     return cast(
         LiteralString,
         f"""
-MATCH (s:Stock {{ticker: $key}})
+MATCH (s:Company {{ticker: $key}})
 OPTIONAL MATCH path = (s)-[*1..{hop}]->(m)
 RETURN s AS center, collect(path) AS paths
 """,
@@ -49,7 +49,7 @@ RETURN n AS center, collect(path) AS paths
 
 THEME_QUERY: LiteralString = """
 MATCH (t:Theme {name: $key})
-OPTIONAL MATCH path = (s:Stock)-[:BELONGS_TO]->(t)
+OPTIONAL MATCH path = (s:Company)-[:BELONGS_TO]->(t)
 RETURN t AS center, collect(path) AS paths
 """
 
@@ -60,9 +60,27 @@ def _theme_query(hop: int) -> LiteralString:
         LiteralString,
         f"""
 MATCH (t:Theme {{name: $key}})
-OPTIONAL MATCH mpath = (s:Stock)-[:BELONGS_TO]->(t)
+OPTIONAL MATCH mpath = (s:Company)-[:BELONGS_TO]->(t)
 OPTIONAL MATCH epath = (s)-[*1..{hop - 1}]->(m)
 RETURN t AS center, collect(mpath) + collect(epath) AS paths
+""",
+    )
+
+
+NEWS_SEED_QUERY: LiteralString = """
+MATCH (a)-[r]->(b)
+WHERE $news_id IN r.news_ids OR toInteger($news_id) IN r.news_ids
+RETURN a, r, b
+"""
+
+
+def _news_expand_query(hop: int) -> LiteralString:
+    return cast(
+        LiteralString,
+        f"""
+MATCH (n) WHERE elementId(n) IN $seed_node_ids
+OPTIONAL MATCH path = (n)-[*1..{hop - 1}]->(m)
+RETURN collect(path) AS paths
 """,
     )
 
@@ -96,6 +114,25 @@ async def get_commodity_graph(name: str, hop: int = 1) -> GraphResponse | None:
 
 async def get_theme_graph(name: str, hop: int = 1) -> GraphResponse | None:
     return await _fetch_graph(_theme_query(hop), name)
+
+
+async def get_news_graph(news_id: str, hop: int = 1) -> NewsGraphResponse | None:
+    """뉴스는 center를 쿼리에서 정할 수 없으므로 시드/확장을 나눠 가져와 병합한다."""
+    seed_records = await neo4j_database.execute(NEWS_SEED_QUERY, {"news_id": news_id})
+    if not seed_records:  # 해당 news_id를 근거로 가진 관계가 0건
+        return None
+
+    expand_paths = []
+    if hop >= 2:
+        seed_node_ids = list(
+            {node.element_id for record in seed_records for node in (record["a"], record["b"])}
+        )
+        records = await neo4j_database.execute(
+            _news_expand_query(hop), {"seed_node_ids": seed_node_ids}
+        )
+        if records:
+            expand_paths = records[0]["paths"]
+    return NewsGraphResponse.from_seed_and_paths(seed_records, expand_paths)
 
 
 async def get_relationship_detail(element_id: str) -> RelationshipDetail | None:

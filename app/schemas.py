@@ -100,6 +100,53 @@ class GraphResponse(BaseModel):
         )
 
 
+class NewsGraphResponse(GraphResponse):
+
+    seed_relationship_ids: list[str] = Field(
+        default_factory=list,
+    )
+
+    @classmethod
+    def from_seed_and_paths(
+        cls, seed_records: list[Record], expand_paths: list[Path]
+    ) -> NewsGraphResponse:
+ 
+        nodes: dict[str, GraphNode] = {}
+        rels: dict[str, GraphRelationship] = {}
+        seed_ids: list[str] = []
+        center_id = ""
+        center_mentions = -1
+
+        for record in seed_records:
+            a: Node = record["a"]
+            r: Relationship = record["r"]
+            b: Node = record["b"]
+            nodes.setdefault(a.element_id, GraphNode.from_neo4j(a))
+            nodes.setdefault(b.element_id, GraphNode.from_neo4j(b))
+            if r.element_id not in rels:
+                rels[r.element_id] = GraphRelationship.from_neo4j(r)
+                seed_ids.append(r.element_id)
+            mentions = r.get("mention_count") or 0
+            if mentions > center_mentions:
+                center_mentions = mentions
+                center_id = a.element_id
+
+        for path in expand_paths:
+            if path is None:
+                continue
+            for n in path.nodes:
+                nodes.setdefault(n.element_id, GraphNode.from_neo4j(n))
+            for r in path.relationships:
+                rels.setdefault(r.element_id, GraphRelationship.from_neo4j(r))
+
+        return cls(
+            center=center_id,
+            nodes=list(nodes.values()),
+            relationships=list(rels.values()),
+            seed_relationship_ids=seed_ids,
+        )
+
+
 class RelationshipDetail(BaseModel):
     """간선 클릭 시 지연 조회하는 full provenance."""
 
@@ -121,7 +168,7 @@ class RelationshipDetail(BaseModel):
             type=rel.type,
             start=rel.start_node.element_id,
             end=rel.end_node.element_id,
-            news_ids=list(rel.get("news_ids") or []),
+            news_ids=[str(v) for v in (rel.get("news_ids") or [])],
             source_sentences=list(rel.get("source_sentences") or []),
             mentioned_ats=_to_jsonable(rel.get("mentioned_ats") or []),
             mention_count=rel.get("mention_count"),

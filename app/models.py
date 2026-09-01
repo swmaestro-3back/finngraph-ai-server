@@ -4,7 +4,7 @@ from enum import StrEnum
 
 
 class NodeLabel(StrEnum):
-    STOCK = "Stock"
+    COMPANY = "Company"
     KOSPI = "KOSPI"
     KOSDAQ = "KOSDAQ"
     NYSE = "NYSE"
