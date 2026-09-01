@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import LiteralString, cast
 
 from core import neo4j_database
-from schemas import GraphResponse, RelationshipDetail
+from schemas import GraphResponse, NewsGraphResponse, RelationshipDetail
 
 
 # DAO
@@ -67,6 +67,24 @@ RETURN t AS center, collect(mpath) + collect(epath) AS paths
     )
 
 
+NEWS_SEED_QUERY: LiteralString = """
+MATCH (a)-[r]->(b)
+WHERE $news_id IN r.news_ids OR toInteger($news_id) IN r.news_ids
+RETURN a, r, b
+"""
+
+
+def _news_expand_query(hop: int) -> LiteralString:
+    return cast(
+        LiteralString,
+        f"""
+MATCH (n) WHERE elementId(n) IN $seed_node_ids
+OPTIONAL MATCH path = (n)-[*1..{hop - 1}]->(m)
+RETURN collect(path) AS paths
+""",
+    )
+
+
 # 간선 클릭 시 element_id로 단일 관계의 full provenance만 조회.
 RELATIONSHIP_QUERY: LiteralString = """
 MATCH ()-[r]->()
@@ -96,6 +114,25 @@ async def get_commodity_graph(name: str, hop: int = 1) -> GraphResponse | None:
 
 async def get_theme_graph(name: str, hop: int = 1) -> GraphResponse | None:
     return await _fetch_graph(_theme_query(hop), name)
+
+
+async def get_news_graph(news_id: str, hop: int = 1) -> NewsGraphResponse | None:
+    """뉴스는 center를 쿼리에서 정할 수 없으므로 시드/확장을 나눠 가져와 병합한다."""
+    seed_records = await neo4j_database.execute(NEWS_SEED_QUERY, {"news_id": news_id})
+    if not seed_records:  # 해당 news_id를 근거로 가진 관계가 0건
+        return None
+
+    expand_paths = []
+    if hop >= 2:
+        seed_node_ids = list(
+            {node.element_id for record in seed_records for node in (record["a"], record["b"])}
+        )
+        records = await neo4j_database.execute(
+            _news_expand_query(hop), {"seed_node_ids": seed_node_ids}
+        )
+        if records:
+            expand_paths = records[0]["paths"]
+    return NewsGraphResponse.from_seed_and_paths(seed_records, expand_paths)
 
 
 async def get_relationship_detail(element_id: str) -> RelationshipDetail | None:
