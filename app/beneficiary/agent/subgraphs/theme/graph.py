@@ -19,7 +19,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, RetryPolicy
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 
-from beneficiary.models import TrackOutcome
+from beneficiary.models import SubgraphResult
 from beneficiary.agent.subgraphs.theme import nodes
 from beneficiary.agent.subgraphs.theme.state import ThemeTrackState
 
@@ -38,7 +38,7 @@ def demote_to_outcome(fallback: dict) -> Callable:
 
     def handler(state: ThemeTrackState, error: NodeError) -> Command:
         logger.error("theme 트랙 노드 실패: %s", error.node, exc_info=error.error)
-        return Command(update={**fallback, "outcome": TrackOutcome(error=str(error.error))})
+        return Command(update={**fallback, "outcome": SubgraphResult(error=str(error.error))})
 
     return handler
 
@@ -50,7 +50,7 @@ def _after_expand(state: ThemeTrackState) -> str:
 async def _expand(state: ThemeTrackState) -> dict:
     result = await nodes.expand_theme(state)
     if not result.get("hits"):
-        return result | {"outcome": TrackOutcome(
+        return result | {"outcome": SubgraphResult(
             status="no_pool",
             reason="시나리오와 맞는 테마 편입 사유를 가진 상장 기업을 찾지 못했습니다.",
         )}
@@ -62,8 +62,8 @@ async def _filter(state: ThemeTrackState) -> dict:
     status = result.pop("status", None)
     reason = result.pop("reason", None)
     if status:
-        return result | {"outcome": TrackOutcome(status=status, reason=reason)}
-    return result | {"outcome": state.get("outcome") or TrackOutcome()}
+        return result | {"outcome": SubgraphResult(status=status, reason=reason)}
+    return result | {"outcome": state.get("outcome") or SubgraphResult()}
 
 
 def build_theme_subgraph():

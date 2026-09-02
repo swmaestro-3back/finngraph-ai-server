@@ -10,14 +10,13 @@ START → planner ────┤                 ├─→ candidate_selector �
 
 planner 는 유일한 분기다 — 정지 신호가 없으면 노드 리스트를 반환해 두 트랙을
 같은 슈퍼스텝에 동시에 띄운다. 트랙은 END 로 가지 않는다: 빈손이든 장애든
-자기 TrackOutcome 을 들고 팬인까지 가고, 종료 판정은 candidate_selector
+자기 결과(SupplySubgraphResult/ThemeSubgraphResult)를 들고 팬인까지 가고, 종료 판정은 candidate_selector
 한 곳이 한다(스펙 §3). 한쪽 트랙의 빈손이 다른 쪽 결과를 버리지 않게 하려는
 것이고, 그래서 트랙 뒤 엣지는 조건부가 아니라 무조건 엣지다.
 
 두 트랙은 같은 슈퍼스텝에 쓰지만 리듀서가 필요 없다 — 부모 키가 서로 겹치지
-않기 때문이다. supply 는 edges·supply_outcome 을, theme 은 theme_hits·
-theme_outcome 을 쓰고, 트랙 내부의 strong_ids/weak_ids 는 각 서브그래프
-state 에만 있다.
+않기 때문이다. supply 는 supply_result 를, theme 은 theme_result 를 쓰고,
+트랙 내부의 strong_ids/weak_ids 는 각 서브그래프 state 에만 있다.
 
 정지 규칙은 하나다 — 상태에 error(장애) 나 status(정상 조기 종료) 가 들어오면
 그 다음 라우터가 END 로 보낸다. planner 는 극성 게이트에서 악재를
@@ -32,7 +31,8 @@ error 로 강등한다. 스펙 §9(예외는 그래프 밖으로 나가지 않�
 선언된다.
 
 트랙 래퍼는 자체 예외를 내지 않는다 — 내부 실패는 서브그래프가 outcome
-(TrackOutcome) 값으로 흡수한다(subgraphs/*/graph.py). retry_policy·timeout·
+(SubgraphResult) 값으로 흡수하고, 래퍼가 그것을 산출물과 함께 한 결과
+객체로 묶어 올린다(subgraphs/*/graph.py). retry_policy·timeout·
 error_handler 도 그쪽 안쪽 노드에 걸려 있어 래퍼에는 아무것도 달지 않는다.
 """
 
@@ -48,7 +48,7 @@ from langgraph.types import Command, RetryPolicy
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 from psycopg import OperationalError
 
-from beneficiary.models import TrackOutcome
+from beneficiary.models import SubgraphResult, SupplySubgraphResult, ThemeSubgraphResult
 from beneficiary.agent.nodes import (
     build_plan,
     collect_financials,
@@ -108,7 +108,7 @@ def stop_or(next_node: str) -> Callable[[GraphState], str]:
 def route_after_plan(state: GraphState) -> str | list[str]:
     """유일한 분기 — 정지 신호가 없으면 두 트랙으로 동시에 나간다.
 
-    트랙은 END 로 가지 않는다. 빈손이든 장애든 TrackOutcome 을 들고 팬인까지
+    트랙은 END 로 가지 않는다. 빈손이든 장애든 자기 결과 객체를 들고 팬인까지
     가고, 종료 판정은 candidate_selector 한 곳이 한다(스펙 §3).
     """
 
@@ -130,9 +130,12 @@ async def supply_track(state: GraphState) -> dict:
         "relation_lines": state["relation_lines"],
     })
 
+    signal = result.get("outcome") or SubgraphResult()
     return {
-        "edges": result.get("edges", []),
-        "supply_outcome": result.get("outcome") or TrackOutcome()
+        "supply_result": SupplySubgraphResult(
+            status=signal.status, reason=signal.reason, error=signal.error,
+            edges=result.get("edges", []),
+        )
     }
 
 
@@ -149,10 +152,9 @@ async def theme_track(state: GraphState) -> dict:
     # Planner가 시나리오를 생성하지 않았으면 바로 반환
     if not plan.scenario_probes:
         return {
-            "theme_hits": [],
-            "theme_outcome": TrackOutcome(
+            "theme_result": ThemeSubgraphResult(
                 status="no_pool",
-                reason="이 사건에서 추적할 수혜 시나리오를 세우지 못했습니다."
+                reason="이 사건에서 추적할 수혜 시나리오를 세우지 못했습니다.",
             )
         }
     
@@ -163,9 +165,12 @@ async def theme_track(state: GraphState) -> dict:
         "relation_lines": state["relation_lines"],
     })
 
+    signal = result.get("outcome") or SubgraphResult()
     return {
-        "theme_hits": result.get("hits", []),
-        "theme_outcome": result.get("outcome") or TrackOutcome()
+        "theme_result": ThemeSubgraphResult(
+            status=signal.status, reason=signal.reason, error=signal.error,
+            hits=result.get("hits", []),
+        )
     }
 
 

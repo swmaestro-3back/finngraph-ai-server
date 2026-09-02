@@ -13,12 +13,12 @@ from beneficiary.agent.state import GraphState
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.packer import pack_evaluator_context
 from beneficiary.agent.utils.postprocess import validate_and_rank
-from beneficiary.models import TrackOutcome
+from beneficiary.models import SubgraphResult
 
 logger = logging.getLogger(__name__)
 
 
-def build_track_note(supply: TrackOutcome, theme: TrackOutcome) -> str | None:
+def build_track_note(supply: SubgraphResult, theme: SubgraphResult) -> str | None:
     """탐색 축 현황을 사용자 문장으로 — 프롬프트가 아니라 코드가 보증한다(스펙 §7.6).
 
     "후보가 없었다"와 "장애로 못 돌았다"는 사용자에게 의미가 완전히 다르다.
@@ -44,8 +44,8 @@ async def evaluate(state: GraphState) -> dict:
     )
     evaluator_output = await llm.evaluate_beneficiary(packed.prompt)
     track_note = build_track_note(
-        state.get("supply_outcome") or TrackOutcome(),
-        state.get("theme_outcome") or TrackOutcome(),
+        state.get("supply_result") or SubgraphResult(),
+        state.get("theme_result") or SubgraphResult(),
     )
     items = validate_and_rank(evaluator_output, packed.by_cid, packed.eids_by_cid,
                               track_note=track_note)

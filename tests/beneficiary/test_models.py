@@ -13,7 +13,7 @@ from beneficiary.models import (
     NewsPlan,
     ScenarioProbe,
     ThemeCandidate,
-    TrackOutcome,
+    SubgraphResult,
 )
 
 
@@ -61,6 +61,6 @@ def test_theme_candidate_defaults():
     assert hit.relevance is None
 
 
-def test_track_outcome_is_clean_by_default():
-    outcome = TrackOutcome()
-    assert outcome.status is None and outcome.reason is None and outcome.error is None
+def test_subgraph_result_is_clean_by_default():
+    signal = SubgraphResult()
+    assert signal.status is None and signal.reason is None and signal.error is None

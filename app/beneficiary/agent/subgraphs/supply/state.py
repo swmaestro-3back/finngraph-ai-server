@@ -8,7 +8,7 @@ from beneficiary.models import (
     RelationLine,
     RootCompany,
     SupplyChainCandidate,
-    TrackOutcome,
+    SubgraphResult,
 )
 
 
@@ -22,4 +22,4 @@ class SupplyTrackState(TypedDict, total=False):
     edges: list[SupplyChainCandidate]
     strong_ids: list[str]  # 관측 전용 — 부모로 올라가지 않는다
     weak_ids: list[str]
-    outcome: TrackOutcome
+    outcome: SubgraphResult

@@ -17,7 +17,13 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
-from beneficiary.models import Candidate, SupplyChainCandidate, ThemeCandidate, TrackOutcome
+from beneficiary.models import (
+    Candidate,
+    SupplyChainCandidate,
+    SupplySubgraphResult,
+    ThemeCandidate,
+    ThemeSubgraphResult,
+)
 from core import MARKETS
 from beneficiary.agent.state import GraphState
 
@@ -200,26 +206,26 @@ def select_theme_candidates(
 
 
 async def select_candidates(state: GraphState) -> dict:
-    supply_outcome = state.get("supply_outcome") or TrackOutcome()
-    theme_outcome = state.get("theme_outcome") or TrackOutcome()
+    supply = state.get("supply_result") or SupplySubgraphResult()
+    theme = state.get("theme_result") or ThemeSubgraphResult()
 
     # 두 축이 모두 장애면 "후보 없음"이 아니라 장애다 — 503 으로 나가야 한다(§7.0).
     # 리스트 상태보다 **먼저** 판정한다: 리스트가 비었는지에 이 보장을 걸면
     # 원시 리스트를 남긴 채 실패한 단계에서 분기가 통째로 죽는다.
-    if supply_outcome.error and theme_outcome.error:
+    if supply.error and theme.error:
         return {"candidates": [],
-                "error": f"supply: {supply_outcome.error} / theme: {theme_outcome.error}"}
+                "error": f"supply: {supply.error} / theme: {theme.error}"}
 
-    edges = state.get("edges") or []
-    hits = state.get("theme_hits") or []
+    edges = supply.edges
+    hits = theme.hits
 
     if not edges and not hits:
         # 한쪽만 장애면 no_pool 로 계속 진행하되(다른 쪽은 정상 조기 종료일 수
         # 있다), 장애 원문은 사용자용 reason 에 넣지 않고 로그로만 남긴다.
-        for label, outcome in (("supply", supply_outcome), ("theme", theme_outcome)):
-            if outcome.error:
-                logger.warning("%s 트랙 장애(no_pool 로 계속): %s", label, outcome.error)
-        reasons = [o.reason for o in (supply_outcome, theme_outcome) if o.reason]
+        for label, result in (("supply", supply), ("theme", theme)):
+            if result.error:
+                logger.warning("%s 트랙 장애(no_pool 로 계속): %s", label, result.error)
+        reasons = [r.reason for r in (supply, theme) if r.reason]
         return {"candidates": [], "status": "no_pool",
                 "reason": " ".join(reasons) or "탐색된 후보 기업이 없습니다."}
 

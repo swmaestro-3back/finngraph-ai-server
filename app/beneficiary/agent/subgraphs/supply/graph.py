@@ -19,7 +19,7 @@ from langgraph.types import Command, RetryPolicy
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 from psycopg import OperationalError
 
-from beneficiary.models import TrackOutcome
+from beneficiary.models import SubgraphResult
 from beneficiary.agent.subgraphs.supply import nodes
 from beneficiary.agent.subgraphs.supply.state import SupplyTrackState
 
@@ -38,7 +38,7 @@ def demote_to_outcome(fallback: dict) -> Callable:
 
     def handler(state: SupplyTrackState, error: NodeError) -> Command:
         logger.error("supply 트랙 노드 실패: %s", error.node, exc_info=error.error)
-        return Command(update={**fallback, "outcome": TrackOutcome(error=str(error.error))})
+        return Command(update={**fallback, "outcome": SubgraphResult(error=str(error.error))})
 
     return handler
 
@@ -50,7 +50,7 @@ def _after_expand(state: SupplyTrackState) -> str:
 async def _expand(state: SupplyTrackState) -> dict:
     result = await nodes.expand_supply(state)
     if not result.get("edges"):
-        return result | {"outcome": TrackOutcome(
+        return result | {"outcome": SubgraphResult(
             status="no_pool",
             reason="루트 기업에 납품하는 상장 공급사를 그래프에서 찾지 못했습니다.",
         )}
@@ -62,8 +62,8 @@ async def _filter(state: SupplyTrackState) -> dict:
     status = result.pop("status", None)
     reason = result.pop("reason", None)
     if status:
-        return result | {"outcome": TrackOutcome(status=status, reason=reason)}
-    return result | {"outcome": state.get("outcome") or TrackOutcome()}
+        return result | {"outcome": SubgraphResult(status=status, reason=reason)}
+    return result | {"outcome": state.get("outcome") or SubgraphResult()}
 
 
 def build_supply_subgraph():

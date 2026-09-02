@@ -8,7 +8,7 @@ from beneficiary.models import (
     RelationLine,
     RootCompany,
     ThemeCandidate,
-    TrackOutcome,
+    SubgraphResult,
 )
 
 
@@ -21,4 +21,4 @@ class ThemeTrackState(TypedDict, total=False):
     hits: list[ThemeCandidate]
     strong_ids: list[str]  # 관측 전용 — 부모로 올라가지 않는다
     weak_ids: list[str]
-    outcome: TrackOutcome
+    outcome: SubgraphResult

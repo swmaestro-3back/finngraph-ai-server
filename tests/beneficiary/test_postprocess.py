@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from beneficiary.models import Candidate, EvaluatorInsight, EvaluatorOutput, TrackOutcome
+from beneficiary.models import Candidate, EvaluatorInsight, EvaluatorOutput, SubgraphResult
 from beneficiary.agent.utils.postprocess import validate_and_rank
 from beneficiary.agent.nodes.evaluator import build_track_note
 
@@ -61,29 +61,29 @@ def test_rules_reject_unknown_cid_dup_and_citationless_rationale():
 
 
 def test_track_note_distinguishes_empty_from_failed():
-    note = build_track_note(TrackOutcome(status="no_pool"), TrackOutcome())
+    note = build_track_note(SubgraphResult(status="no_pool"), SubgraphResult())
     assert "공급망" in note and "찾지 못해" in note
 
-    note = build_track_note(TrackOutcome(), TrackOutcome(error="boom"))
+    note = build_track_note(SubgraphResult(), SubgraphResult(error="boom"))
     assert "시나리오 테마" in note and "실패" in note
 
-    assert build_track_note(TrackOutcome(), TrackOutcome()) is None
+    assert build_track_note(SubgraphResult(), SubgraphResult()) is None
 
 
 def test_track_note_covers_remaining_branches_and_error_precedence():
     # supply.error 단독 — 시나리오 테마 축만으로 도출됐다는 메시지 (공급망 축 실패)
-    note = build_track_note(TrackOutcome(error="boom"), TrackOutcome())
+    note = build_track_note(SubgraphResult(error="boom"), SubgraphResult())
     assert "공급망" in note and "실패" in note
 
     # theme.status 단독 — 공급망 축만으로 도출됐다는 메시지 (시나리오 테마 축이 비었음)
-    note = build_track_note(TrackOutcome(), TrackOutcome(status="no_pool"))
+    note = build_track_note(SubgraphResult(), SubgraphResult(status="no_pool"))
     assert "시나리오 테마" in note and "찾지 못해" in note
 
     # 두 축 모두 신호가 있을 때: supply 는 status(비었음), theme 는 error(장애) —
     # error 가 축을 가리지 않고 status 보다 우선해야 한다. 우선순위가 뒤집히면
     # (status 를 error 보다 먼저 검사하면) 이 케이스는 supply.status 메시지
     # ("공급망...찾지 못해")를 반환해 아래 단언이 깨진다.
-    note = build_track_note(TrackOutcome(status="no_pool"), TrackOutcome(error="boom"))
+    note = build_track_note(SubgraphResult(status="no_pool"), SubgraphResult(error="boom"))
     assert "시나리오 테마" in note and "실패" in note
 
 

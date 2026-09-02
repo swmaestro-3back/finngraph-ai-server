@@ -15,7 +15,14 @@ import asyncio
 from langgraph.errors import NodeError
 from langgraph.graph import END
 
-from beneficiary.models import NewsContext, NewsPlan, ScenarioProbe, TrackOutcome
+from beneficiary.models import (
+    NewsContext,
+    NewsPlan,
+    ScenarioProbe,
+    SubgraphResult,
+    SupplySubgraphResult,
+    ThemeSubgraphResult,
+)
 from beneficiary.agent import workflow
 from beneficiary.agent.workflow import (
     beneficiary_graph,
@@ -91,8 +98,9 @@ def _fake_graph(monkeypatch, on_supply, on_theme, selector_seen):
                 "root_companies": [], "relation_lines": []}
 
     async def _select(state):
-        selector_seen.append({"edges": list(state.get("edges") or []),
-                              "theme_hits": list(state.get("theme_hits") or [])})
+        supply = state.get("supply_result") or SupplySubgraphResult()
+        theme = state.get("theme_result") or ThemeSubgraphResult()
+        selector_seen.append({"edges": list(supply.edges), "hits": list(theme.hits)})
         return {"candidates": [], "status": "no_candidates"}
 
     monkeypatch.setattr(workflow, "build_plan", _plan)
@@ -109,17 +117,17 @@ async def test_fan_in_runs_once_with_both_tracks_results(monkeypatch):
     """
 
     async def _supply(state):
-        return {"edges": ["e1"], "supply_outcome": TrackOutcome()}
+        return {"supply_result": SupplySubgraphResult(edges=["e1"])}
 
     async def _theme(state):
-        return {"theme_hits": ["t1"], "theme_outcome": TrackOutcome()}
+        return {"theme_result": ThemeSubgraphResult(hits=["t1"])}
 
     seen: list[dict] = []
     graph = _fake_graph(monkeypatch, _supply, _theme, seen)
     await graph.ainvoke({"rep_news_id": 1, "news": NEWS})
 
     assert len(seen) == 1, f"팬인이 {len(seen)}번 돌았다 — 정확히 한 번이어야 한다"
-    assert seen[0] == {"edges": ["e1"], "theme_hits": ["t1"]}
+    assert seen[0] == {"edges": ["e1"], "hits": ["t1"]}
 
 
 async def test_tracks_run_concurrently(monkeypatch):
@@ -133,34 +141,34 @@ async def test_tracks_run_concurrently(monkeypatch):
 
     async def _supply(state):
         await _rendezvous(state)
-        return {"edges": ["e1"], "supply_outcome": TrackOutcome()}
+        return {"supply_result": SupplySubgraphResult(edges=["e1"])}
 
     async def _theme(state):
         await _rendezvous(state)
-        return {"theme_hits": ["t1"], "theme_outcome": TrackOutcome()}
+        return {"theme_result": ThemeSubgraphResult(hits=["t1"])}
 
     seen: list[dict] = []
     graph = _fake_graph(monkeypatch, _supply, _theme, seen)
     await graph.ainvoke({"rep_news_id": 1, "news": NEWS})
 
-    assert seen and seen[0] == {"edges": ["e1"], "theme_hits": ["t1"]}
+    assert seen and seen[0] == {"edges": ["e1"], "hits": ["t1"]}
 
 
 async def test_failed_track_does_not_discard_the_other(monkeypatch):
     """supply 가 장애여도 theme 결과가 팬인까지 간다 — 이 태스크의 존재 이유다."""
 
     async def _supply(state):
-        return {"edges": [], "supply_outcome": TrackOutcome(error="neo4j down")}
+        return {"supply_result": SupplySubgraphResult(error="neo4j down")}
 
     async def _theme(state):
-        return {"theme_hits": ["t1"], "theme_outcome": TrackOutcome()}
+        return {"theme_result": ThemeSubgraphResult(hits=["t1"])}
 
     seen: list[dict] = []
     graph = _fake_graph(monkeypatch, _supply, _theme, seen)
     await graph.ainvoke({"rep_news_id": 1, "news": NEWS})
 
     assert len(seen) == 1
-    assert seen[0]["theme_hits"] == ["t1"]
+    assert seen[0]["hits"] == ["t1"]
 
 
 # --- theme 래퍼 -----------------------------------------------------------
@@ -177,23 +185,23 @@ async def test_theme_track_skips_subgraph_when_no_probes(monkeypatch):
     result = await theme_track({"news": NEWS, "plan": NO_PROBES,
                                 "root_companies": [], "relation_lines": []})
 
-    assert result["theme_hits"] == []
-    assert result["theme_outcome"].status == "no_pool"
-    assert result["theme_outcome"].reason
+    assert result["theme_result"].hits == []
+    assert result["theme_result"].status == "no_pool"
+    assert result["theme_result"].reason
 
 
 async def test_theme_track_invokes_subgraph_when_probes_exist(monkeypatch):
     class _Stub:
         async def ainvoke(self, state):
-            return {"hits": ["t1"], "outcome": TrackOutcome(status="no_candidates")}
+            return {"hits": ["t1"], "outcome": SubgraphResult(status="no_candidates")}
 
     monkeypatch.setattr(workflow, "_theme_subgraph", _Stub())
 
     result = await theme_track({"news": NEWS, "plan": POSITIVE,
                                 "root_companies": [], "relation_lines": []})
 
-    assert result["theme_hits"] == ["t1"]
-    assert result["theme_outcome"].status == "no_candidates"
+    assert result["theme_result"].hits == ["t1"]
+    assert result["theme_result"].status == "no_candidates"
 
 
 # --- 정지 규칙 ------------------------------------------------------------
@@ -208,9 +216,9 @@ def test_stop_or_passes_through_only_when_not_stopped():
 def test_track_outcome_error_no_longer_stops_the_graph():
     """Task 4 의 임시 비계 제거 — 트랙 신호 판정은 selector 가 독점한다.
 
-    _stopped 가 supply_outcome.error 를 다시 보면(옛 비계) 실패한다.
+    _stopped 가 supply_result.error 를 다시 보면(옛 비계) 실패한다.
     """
-    stopped_state = {"supply_outcome": TrackOutcome(error="neo4j down")}
+    stopped_state = {"supply_result": SupplySubgraphResult(error="neo4j down")}
     assert stop_or("finance_collector")(stopped_state) == "finance_collector"
     assert route_after_plan({"plan": POSITIVE, **stopped_state}) != END
 

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 EVIDENCE_PER_EDGE = 3  # 간선당 최신 근거 수
 EVIDENCE_PER_CANDIDATE = 6
-FINANCIAL_YEARS = 4  # table RAG 로 넣는 연간 재무 이력 길이
+FINANCIAL_YEARS = 5  # table RAG 로 넣는 연간 재무 이력 길이
 
 
 def _plain(row: dict) -> dict:

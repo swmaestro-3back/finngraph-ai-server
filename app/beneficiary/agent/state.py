@@ -16,35 +16,28 @@ from typing import TypedDict
 from beneficiary.models import (
     RootCompany,
     Candidate,
-    SupplyChainCandidate,
     NewsContext,
     NewsPlan,
     RankedItem,
     RelationLine,
-    ThemeCandidate,
-    TrackOutcome,
+    SupplySubgraphResult,
+    ThemeSubgraphResult,
 )
 
 
 class GraphState(TypedDict, total=False):
-    # 입력 (service 주입)
+    # Initial Inputs
     rep_news_id: int
     news: NewsContext
 
-    # planner
-    # root_companies 는 상장 국내 루트 기업만 — repository.fetch_root_companies 행(dict)을
-    # build_plan 이 필터·변환해 RootCompany(전 필드 확정)로 넣는다.
+    # Planner
     root_companies: list[RootCompany]
     relation_lines: list[RelationLine]
     plan: NewsPlan | None
 
-    # 트랙별 원시 후보 — 각 트랙 서브그래프만 자기 키를 쓴다(동시 쓰기 없음)
-    edges: list[SupplyChainCandidate]
-    theme_hits: list[ThemeCandidate]
-
-    # 트랙 신호 — status/error 를 트랙 로컬로 담는다. 팬인에서 집계한다.
-    supply_outcome: TrackOutcome | None
-    theme_outcome: TrackOutcome | None
+    # Subgraph Results
+    supply_result: SupplySubgraphResult | None
+    theme_result: ThemeSubgraphResult | None
 
     # candidate_selector
     candidates: list[Candidate]

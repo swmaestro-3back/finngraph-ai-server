@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from beneficiary.models import SupplyChainCandidate, ThemeCandidate, TrackOutcome
+from beneficiary.models import (
+    SupplyChainCandidate,
+    SupplySubgraphResult,
+    ThemeCandidate,
+    ThemeSubgraphResult,
+)
 from beneficiary.agent.nodes.candidate_selector import (
     select_candidates,
     select_supply_candidates,
@@ -90,9 +95,8 @@ async def test_overlapping_ticker_becomes_both_and_frees_a_theme_slot():
     edges = [_edge("g01", "000001", market="KOSPI", relevance="strong")]
     hits = [_hit("t01", "000001"), _hit("t02", "000002"), _hit("t03", "000003")]
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
     by_ticker = {c.ticker: c for c in result["candidates"]}
 
     assert by_ticker["000001"].track == "both"
@@ -107,9 +111,8 @@ async def test_overlap_does_not_raise_grade():
     edges = [_edge("g01", "000001", market="KOSPI", relevance="strong")]
     hits = [_hit("t01", "000001", relevance="strong")]
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
     merged = {c.ticker: c for c in result["candidates"]}["000001"]
     assert merged.track == "both"
     assert merged.relevance == "strong"  # supply 가 이미 strong — theme 병합이 등급을 바꾸지 않음
@@ -120,9 +123,8 @@ async def test_overlap_does_not_raise_grade():
 async def test_empty_track_lets_the_other_absorb_up_to_pool_per_market():
     hits = [_hit(f"t{i:02d}", f"00000{i}") for i in range(1, 6)]
 
-    result = await select_candidates({"edges": [], "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(status="no_pool"),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=[], status="no_pool"),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
 
     kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
     assert len(kospi) == 4  # POOL_PER_MARKET
@@ -131,10 +133,8 @@ async def test_empty_track_lets_the_other_absorb_up_to_pool_per_market():
 @pytest.mark.asyncio
 async def test_both_tracks_empty_yields_no_pool_with_merged_reason():
     result = await select_candidates({
-        "edges": [], "theme_hits": [],
-        "supply_outcome": TrackOutcome(status="no_pool", reason="공급망 사유"),
-        "theme_outcome": TrackOutcome(status="no_pool", reason="테마 사유"),
-    })
+        "supply_result": SupplySubgraphResult(edges=[], status="no_pool", reason="공급망 사유"),
+        "theme_result": ThemeSubgraphResult(hits=[], status="no_pool", reason="테마 사유")})
     assert result["status"] == "no_pool"
     assert "공급망 사유" in result["reason"] and "테마 사유" in result["reason"]
 
@@ -142,10 +142,8 @@ async def test_both_tracks_empty_yields_no_pool_with_merged_reason():
 @pytest.mark.asyncio
 async def test_both_tracks_failed_is_error_not_no_pool():
     result = await select_candidates({
-        "edges": [], "theme_hits": [],
-        "supply_outcome": TrackOutcome(error="neo4j down"),
-        "theme_outcome": TrackOutcome(error="vector index missing"),
-    })
+        "supply_result": SupplySubgraphResult(edges=[], error="neo4j down"),
+        "theme_result": ThemeSubgraphResult(hits=[], error="vector index missing")})
     assert result.get("error")
     assert result.get("status") != "no_pool"
 
@@ -163,10 +161,8 @@ async def test_both_tracks_failed_is_error_even_with_raw_rows_left_in_state():
     hits = [_hit("t01", "000002")]
 
     result = await select_candidates({
-        "edges": edges, "theme_hits": hits,
-        "supply_outcome": TrackOutcome(error="bedrock timeout"),
-        "theme_outcome": TrackOutcome(error="bedrock timeout"),
-    })
+        "supply_result": SupplySubgraphResult(edges=edges, error="bedrock timeout"),
+        "theme_result": ThemeSubgraphResult(hits=hits, error="bedrock timeout")})
 
     assert result.get("error")
     assert "bedrock timeout" in result["error"]
@@ -176,13 +172,12 @@ async def test_both_tracks_failed_is_error_even_with_raw_rows_left_in_state():
 
 @pytest.mark.asyncio
 async def test_raw_candidates_but_nothing_survives_selection_is_no_candidates():
-    """edges/theme_hits 는 있었지만 relevance 가 전부 irrelevant 라 풀에 아무도 안 남는 경우."""
+    """edges/hits 는 있었지만 relevance 가 전부 irrelevant 라 풀에 아무도 안 남는 경우."""
     edges = [_edge("g01", "000001", market="KOSPI", relevance="irrelevant")]
     hits = [_hit("t01", "000002", relevance="irrelevant")]
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
     assert result["status"] == "no_candidates"
     assert result["candidates"] == []
 
@@ -201,9 +196,8 @@ async def test_merge_happens_even_when_taken_ticker_sorts_after_cap():
     taken_hit = _hit("t99", "000001", score=0.01)  # 가장 낮은 점수 → 정렬상 맨 뒤
     hits = [*fillers, taken_hit]
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
     by_ticker = {c.ticker: c for c in result["candidates"]}
     assert by_ticker["000001"].track == "both"  # cap 도달 뒤에도 병합은 일어난다
     filler_tickers = {h.ticker for h in fillers}
@@ -216,9 +210,8 @@ async def test_weak_hit_on_taken_ticker_still_merges():
     edges = [_edge("g01", "000001", market="KOSPI", relevance="strong")]
     hits = [_hit("t01", "000001", relevance="weak", score=0.5)]
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
     merged = {c.ticker: c for c in result["candidates"]}["000001"]
     assert merged.track == "both"
     assert merged.matched_reasons == ["[테마A] 사유"]
@@ -234,9 +227,8 @@ async def test_supply_track_absorbs_up_to_pool_per_market_when_theme_empty():
         _edge("g04", "000004", market="KOSPI", relevance="weak", dc=3),
         _edge("g05", "000005", market="KOSPI", relevance="weak", dc=2),
     ]
-    result = await select_candidates({"edges": edges, "theme_hits": [],
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome(status="no_pool")})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=[], status="no_pool")})
     kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
     assert len(kospi) == POOL_PER_MARKET  # theme 이 비어 supply 가 시장 총 상한까지 흡수
 
@@ -253,9 +245,8 @@ async def test_absorption_follows_actual_shortfall_not_raw_row_presence():
              for i in range(1, 6)]                       # KOSPI strong 공급사 5개
     hits = [_hit("t01", "000009", relevance="irrelevant")]  # 원시 행은 있으나 선발 0
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
 
     kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
     assert len(kospi) == POOL_PER_MARKET  # 2가 아니라 4
@@ -269,9 +260,8 @@ async def test_supply_absorption_does_not_displace_theme_candidates():
              for i in range(1, 6)]                       # 흡수 가능한 supply 5개
     hits = [_hit("t01", "000011", score=0.9), _hit("t02", "000012", score=0.8)]
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
 
     kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
     assert len(kospi) == POOL_PER_MARKET
@@ -292,9 +282,8 @@ async def test_theme_hit_on_an_absorbed_supply_candidate_merges_instead_of_repla
              for i in range(1, 5)]                       # 000001·2 가 기본 슬롯, 3·4 는 흡수분
     hits = [_hit("t01", "000003")]                       # 흡수분을 지목한 히트
 
-    result = await select_candidates({"edges": edges, "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=edges),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
 
     by_ticker = {c.ticker: c for c in result["candidates"]}
     assert by_ticker["000003"].track == "both"
@@ -308,9 +297,8 @@ async def test_failed_supply_filter_lets_theme_take_the_whole_market():
     """filter 실패로 간선이 비워진 트랙은 슬롯을 남기지 않는다(그래프가 edges 를 비운다)."""
     hits = [_hit(f"t{i:02d}", f"00000{i}", score=0.9 - i * 0.01) for i in range(1, 6)]
 
-    result = await select_candidates({"edges": [], "theme_hits": hits,
-                                      "supply_outcome": TrackOutcome(error="bedrock timeout"),
-                                      "theme_outcome": TrackOutcome()})
+    result = await select_candidates({"supply_result": SupplySubgraphResult(edges=[], error="bedrock timeout"),
+                                      "theme_result": ThemeSubgraphResult(hits=hits)})
 
     kospi = [c for c in result["candidates"] if c.market == "KOSPI"]
     assert len(kospi) == POOL_PER_MARKET
@@ -323,10 +311,8 @@ async def test_no_pool_reason_excludes_error_text_but_logs_warning(caplog):
 
     with caplog.at_level(logging.WARNING, logger="beneficiary.agent.nodes.candidate_selector"):
         result = await select_candidates({
-            "edges": [], "theme_hits": [],
-            "supply_outcome": TrackOutcome(status="no_pool", reason="공급망 사유"),
-            "theme_outcome": TrackOutcome(error="vector index missing"),
-        })
+            "supply_result": SupplySubgraphResult(edges=[], status="no_pool", reason="공급망 사유"),
+            "theme_result": ThemeSubgraphResult(hits=[], error="vector index missing")})
     assert result["status"] == "no_pool"
     assert "vector index missing" not in result["reason"]
     assert "vector index missing" in caplog.text
