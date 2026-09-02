@@ -20,8 +20,8 @@ from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 from psycopg import OperationalError
 
 from beneficiary.models import TrackOutcome
-from beneficiary.agent.tracks.supply import nodes
-from beneficiary.agent.tracks.supply.state import SupplyTrackState
+from beneficiary.agent.subgraphs.supply import nodes
+from beneficiary.agent.subgraphs.supply.state import SupplyTrackState
 
 logger = logging.getLogger(__name__)
 

@@ -53,7 +53,7 @@ finngraph-kg-api/
 │   │       ├── workflow.py       # 그래프 조립·라우팅 (팬아웃/팬인)
 │   │       ├── state.py
 │   │       ├── nodes/            # 공통 단계 노드 (planner/candidate_selector/finance_collector/evaluator)
-│   │       ├── tracks/           # 병렬 트랙 서브그래프 (supply/, theme/ — 각자 nodes·state·graph)
+│   │       ├── subgraphs/        # 병렬 트랙 서브그래프 (supply/, theme/ — 각자 nodes·state·graph)
 │   │       ├── prompts/          # 시스템 프롬프트 + PROMPT_VERSION
 │   │       └── utils/            # Bedrock 러너블·프롬프트 패킹·출력 후처리
 │   ├── core/

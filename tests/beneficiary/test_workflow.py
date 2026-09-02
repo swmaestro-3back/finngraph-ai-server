@@ -220,7 +220,7 @@ def test_track_outcome_error_no_longer_stops_the_graph():
 def test_every_node_registers_an_error_handler():
     # 예외는 그래프 밖으로 나가지 않는다 — 노드 하나라도 빠지면 500 이 샌다.
     # 트랙 래퍼는 예외 없이 outcome 값만 반환하므로 예외이다
-    # (내부 노드의 error_handler 는 tracks/*/graph.py 소관).
+    # (내부 노드의 error_handler 는 subgraphs/*/graph.py 소관).
     nodes = beneficiary_graph.nodes
     for name in ("planner", "candidate_selector", "finance_collector", "evaluator"):
         assert nodes[name].error_handler_node, f"{name} 에 error_handler 가 없다"

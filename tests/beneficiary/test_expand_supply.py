@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from beneficiary.agent.tracks.supply.nodes import SUPPLY_POOL_CAP, build_edge_candidates, truncate_and_assign_gids
+from beneficiary.agent.subgraphs.supply.nodes import SUPPLY_POOL_CAP, build_edge_candidates, truncate_and_assign_gids
 
 
 def _row(subject, ticker="000002", dc=1, nc=0):

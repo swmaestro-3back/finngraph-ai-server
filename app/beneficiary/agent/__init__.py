@@ -9,7 +9,7 @@ core 까지다.
                 둘뿐이다. 노드 정책(재시도·타임아웃·예외 강등)은 트랙 안쪽
                 노드에 붙는다 — 래퍼에는 붙이지 않는다.
 - state.py    : 노드 간 공유 상태
-- tracks/     : 트랙별 서브그래프 — supply(그래프 간선) / theme(벡터 검색).
+- subgraphs/  : 트랙별 서브그래프 — supply(그래프 간선) / theme(벡터 검색).
                 각각 graph.py(조립·노드 정책) / nodes.py(expand·filter) /
                 state.py 를 갖고, 팬인에는 TrackOutcome 을 값으로 올린다.
 - nodes/      : 트랙 공통 단계 노드 (planner · candidate_selector ·

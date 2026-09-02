@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from beneficiary.models import NewsContext, NewsPlan, RootCompany
-from beneficiary.agent.tracks.supply import build_supply_subgraph
-from beneficiary.agent.tracks.supply import nodes as supply_nodes
+from beneficiary.agent.subgraphs.supply import build_supply_subgraph
+from beneficiary.agent.subgraphs.supply import nodes as supply_nodes
 
 
 def _inputs():

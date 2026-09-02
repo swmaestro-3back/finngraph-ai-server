@@ -32,7 +32,7 @@ error 로 강등한다. 스펙 §9(예외는 그래프 밖으로 나가지 않�
 선언된다.
 
 트랙 래퍼는 자체 예외를 내지 않는다 — 내부 실패는 서브그래프가 outcome
-(TrackOutcome) 값으로 흡수한다(tracks/*/graph.py). retry_policy·timeout·
+(TrackOutcome) 값으로 흡수한다(subgraphs/*/graph.py). retry_policy·timeout·
 error_handler 도 그쪽 안쪽 노드에 걸려 있어 래퍼에는 아무것도 달지 않는다.
 """
 
@@ -56,8 +56,8 @@ from beneficiary.agent.nodes import (
     select_candidates,
 )
 from beneficiary.agent.state import GraphState
-from beneficiary.agent.tracks.supply import build_supply_subgraph
-from beneficiary.agent.tracks.theme import build_theme_subgraph
+from beneficiary.agent.subgraphs.supply import build_supply_subgraph
+from beneficiary.agent.subgraphs.theme import build_theme_subgraph
 
 logger = logging.getLogger(__name__)
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from beneficiary.models import FilterOutput, NewsPlan, ScenarioProbe, SupplyChainCandidate, ThemeCandidate
-from beneficiary.agent.tracks.supply import nodes as supply_module
-from beneficiary.agent.tracks.theme import nodes as theme_nodes
+from beneficiary.agent.subgraphs.supply import nodes as supply_module
+from beneficiary.agent.subgraphs.theme import nodes as theme_nodes
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.postprocess import apply_filter_output
 

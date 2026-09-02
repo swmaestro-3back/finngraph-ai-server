@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from beneficiary.models import NewsContext, NewsPlan, RootCompany, ScenarioProbe
-from beneficiary.agent.tracks.theme import build_theme_subgraph
-from beneficiary.agent.tracks.theme import nodes as theme_nodes
+from beneficiary.agent.subgraphs.theme import build_theme_subgraph
+from beneficiary.agent.subgraphs.theme import nodes as theme_nodes
 
 
 def _inputs():

@@ -17,7 +17,7 @@ import logging
 from beneficiary import repository
 from beneficiary.models import ScenarioProbe, ThemeCandidate
 from beneficiary.agent.nodes.common import derive_exclusions
-from beneficiary.agent.tracks.theme.state import ThemeTrackState
+from beneficiary.agent.subgraphs.theme.state import ThemeTrackState
 from beneficiary.agent.utils import embed, llm
 from beneficiary.agent.utils.packer import pack_theme_filter_context
 from beneficiary.agent.utils.postprocess import apply_filter_output

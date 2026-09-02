@@ -1,6 +1,6 @@
 """그래프 노드 — planner·finance_collector·evaluator·candidate_selector.
 
-트랙(supply·theme) 전용 노드는 각 tracks/<track>/nodes.py 소관이다.
+트랙(supply·theme) 전용 노드는 각 subgraphs/<track>/nodes.py 소관이다.
 """
 
 from beneficiary.agent.nodes.planner import build_plan

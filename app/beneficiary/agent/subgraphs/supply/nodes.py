@@ -14,7 +14,7 @@ import logging
 from beneficiary import repository
 from beneficiary.models import SupplyChainCandidate
 from beneficiary.agent.nodes.common import derive_exclusions
-from beneficiary.agent.tracks.supply.state import SupplyTrackState
+from beneficiary.agent.subgraphs.supply.state import SupplyTrackState
 from beneficiary.agent.utils import llm
 from beneficiary.agent.utils.packer import pack_supply_filter_context
 from beneficiary.agent.utils.postprocess import apply_filter_output

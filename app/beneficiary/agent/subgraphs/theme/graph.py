@@ -20,8 +20,8 @@ from langgraph.types import Command, RetryPolicy
 from neo4j.exceptions import ServiceUnavailable, SessionExpired, TransientError
 
 from beneficiary.models import TrackOutcome
-from beneficiary.agent.tracks.theme import nodes
-from beneficiary.agent.tracks.theme.state import ThemeTrackState
+from beneficiary.agent.subgraphs.theme import nodes
+from beneficiary.agent.subgraphs.theme.state import ThemeTrackState
 
 logger = logging.getLogger(__name__)
 

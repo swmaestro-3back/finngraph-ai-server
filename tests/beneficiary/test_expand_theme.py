@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from beneficiary.models import ScenarioProbe, ThemeCandidate
-from beneficiary.agent.tracks.theme.nodes import (
+from beneficiary.agent.subgraphs.theme.nodes import (
     MATCHED_REASONS_CAP,
     MATCHED_THEMES_CAP,
     THEME_POOL_CAP,
