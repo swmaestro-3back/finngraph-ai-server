@@ -40,8 +40,8 @@ def test_candidate_defaults():
     c = Candidate(ticker="000001", name="회사", company_id=1, track="supply")
     assert c.relevance == "strong" and c.promoted is False
     assert c.matched_items == [] and c.source_edges == [] and c.evidence == []
-    e = SupplyChainCandidate(gid=None, root_name="a", subject_name="s", object_name="o",
-                      ticker="000002", name="공급사", company_id=2)
+    e = SupplyChainCandidate(gid=None, root_name="a", supplier_name="공급사",
+                      supplier_ticker="000002", supplier_id=2)
     assert e.relevance is None and e.disclosure_items == []
 
 

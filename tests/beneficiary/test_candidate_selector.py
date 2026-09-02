@@ -14,9 +14,8 @@ from beneficiary.agent.nodes.candidate_selector import (
 
 
 def _edge(gid, ticker, market="KOSPI", relevance="strong", dc=1, nc=0, items=("HBM",), name=None):
-    return SupplyChainCandidate(gid=gid, root_name="루트 기업", subject_name=name or f"공급{ticker}",
-                         object_name="루트 기업", ticker=ticker, name=name or f"공급{ticker}",
-                         company_id=1, market=market,
+    return SupplyChainCandidate(gid=gid, root_name="루트 기업", supplier_name=name or f"공급{ticker}",
+                         supplier_ticker=ticker, supplier_id=1, supplier_market=market,
                          disclosure_items=list(items), news_items=[],
                          disclosure_count=dc, news_mention_count=nc, relevance=relevance)
 

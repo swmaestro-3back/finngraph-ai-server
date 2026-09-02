@@ -83,12 +83,12 @@ async def fetch_relation_lines(conn: AsyncConnection, rep_news_id: int) -> list[
 async def fetch_supply_neighbors_by_name(
     root_name: str, exclude_names: list[str], exclude_tickers: list[str]
 ) -> list[dict]:
-    """루트 기업(name 매칭)에 공급하는 유입 SUPPLIES_TO 1-hop 이웃 — 활성 KOSPI/KOSDAQ 만.
+    """루트 기업의 1-hop 공급관계에 있는 기업 — 활성 KOSPI/KOSDAQ 만.
 
     루트 기업은 name 으로 특정한다 — 그래프의 자연키가 name 이고 노드 ticker 는
     시드 지연으로 빌 수 있어 name 이 안전한 키다. 시장·상장 판정은 노드
-    필드(market·is_active)로 여기서 끝낸다 — ETL 이 ticker 와 같은 시점에
-    적재하며, 상폐 게이트는 is_active 가 담당한다.
+    필드(market·is_listed)로 여기서 끝낸다 — ETL 이 ticker 와 같은 시점에
+    적재하며, 상장 게이트는 is_listed 가 담당한다.
     아이템 배열·카운트는 filter LLM 의 판단 원료다.
     """
 
@@ -96,12 +96,11 @@ async def fetch_supply_neighbors_by_name(
 MATCH (n:{NodeLabel.COMPANY})-[r:{RelationshipType.SUPPLIES_TO}]->(o:{NodeLabel.COMPANY} {{name: $root_name}})
 WHERE n.ticker IS NOT NULL
   AND n.market IN $markets
-  AND n.is_active = true
+  AND n.is_listed = true
   AND NOT n.ticker IN $exclude_tickers
   AND NOT n.name   IN $exclude_names
 RETURN n.ticker AS ticker, n.name AS name, n.company_id AS company_id,
        n.market AS market,
-       n.name AS subject_name, o.name AS object_name,
        coalesce(r.disclosure_count, 0)    AS disclosure_count,
        coalesce(r.news_mention_count, 0)  AS news_mention_count,
        coalesce(r.disclosure_items, [])   AS disclosure_items,
@@ -110,8 +109,12 @@ RETURN n.ticker AS ticker, n.name AS name, n.company_id AS company_id,
 """)
     records = await neo4j_client.execute(
         query,
-        {"root_name": root_name, "markets": list(MARKETS),
-         "exclude_tickers": exclude_tickers, "exclude_names": exclude_names},
+        {
+            "root_name": root_name,
+            "markets": list(MARKETS),
+            "exclude_tickers": exclude_tickers,
+            "exclude_names": exclude_names
+        },
     )
     return [dict(record) for record in records]
 
@@ -142,7 +145,7 @@ WHERE score >= $min_score
 WITH r, score, startNode(r) AS c, endNode(r) AS t
 WHERE c.ticker IS NOT NULL
   AND c.market IN $markets
-  AND c.is_active = true
+  AND c.is_listed = true
   AND NOT c.ticker IN $exclude_tickers
   AND NOT c.name   IN $exclude_names
 RETURN c.ticker AS ticker, c.name AS name, c.company_id AS company_id,

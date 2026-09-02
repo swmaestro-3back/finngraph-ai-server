@@ -77,7 +77,9 @@ def build_supply_subgraph():
                      timeout=LLM_TIMEOUT,
                      error_handler=demote_to_outcome(
                          {"edges": [], "strong_ids": [], "weak_ids": []}))
+
     builder.add_edge(START, "expand_supply")
     builder.add_conditional_edges("expand_supply", _after_expand, ["filter_supply", END])
     builder.add_edge("filter_supply", END)
+
     return builder.compile()

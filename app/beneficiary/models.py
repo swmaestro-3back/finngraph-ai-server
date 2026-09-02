@@ -75,13 +75,11 @@ class SupplyChainCandidate:
     """호재 트랙 원시 후보 — 유입 SUPPLIES_TO 간선 하나."""
 
     gid: str | None  # 총량 절단 후 부여되는 gNN
-    root_name: str
-    subject_name: str  # 공급사(후보) 정규명
-    object_name: str  # 루트 기업 정규명
-    ticker: str
-    name: str
-    company_id: int | None
-    market: str | None = None
+    root_name: str  # 루트 기업 정규명 — 간선의 object 쪽
+    supplier_name: str  # 공급사(후보) 정규명 — 간선의 subject 쪽
+    supplier_ticker: str
+    supplier_id: int | None
+    supplier_market: str | None = None
     disclosure_items: list[str] = field(default_factory=list)
     news_items: list[str] = field(default_factory=list)
     disclosure_count: int = 0
@@ -148,7 +146,7 @@ class RankedItem:
     rank: int = 0
 
 
-# ── LLM 구조화 출력 ──────────────────────────────────────────────────────────
+# ── LLM Structured Output ──────────────────────────────────────────────────────────
 
 
 class ScenarioProbe(BaseModel):

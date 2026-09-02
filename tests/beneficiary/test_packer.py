@@ -31,8 +31,8 @@ THEME_PLAN = NewsPlan(
 
 
 def _edge(gid="g01", items=("HBM",)):
-    return SupplyChainCandidate(gid=gid, root_name="루트기업", subject_name="공급사", object_name="루트기업",
-                         ticker="000002", name="공급사", company_id=2, market="KOSPI",
+    return SupplyChainCandidate(gid=gid, root_name="루트기업", supplier_name="공급사",
+                         supplier_ticker="000002", supplier_id=2, supplier_market="KOSPI",
                          disclosure_items=list(items), news_items=[], disclosure_count=2,
                          news_mention_count=5)
 

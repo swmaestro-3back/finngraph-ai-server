@@ -80,7 +80,7 @@ def pack_supply_filter_context(plan: NewsPlan, edges: list[SupplyChainCandidate]
     for edge in edges:
         items = _items_inline(list(dict.fromkeys([*edge.disclosure_items, *edge.news_items])))
         lines.append(
-            f"[{edge.gid}] (루트: {edge.root_name}) {edge.subject_name} →공급→ {edge.object_name}"
+            f"[{edge.gid}] (루트: {edge.root_name}) {edge.supplier_name} →공급→ {edge.root_name}"
             f" | items: {items} | 공시{edge.disclosure_count}·뉴스{edge.news_mention_count}"
         )
     return "\n".join(lines)

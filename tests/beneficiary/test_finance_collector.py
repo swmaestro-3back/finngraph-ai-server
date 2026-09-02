@@ -36,8 +36,8 @@ def fake_db(monkeypatch):
 
 
 def _edge(gid, subject):
-    return SupplyChainCandidate(gid=gid, root_name="루트 기업", subject_name=subject, object_name="루트 기업",
-                         ticker="000001", name=subject, company_id=1)
+    return SupplyChainCandidate(gid=gid, root_name="루트 기업", supplier_name=subject,
+                         supplier_ticker="000001", supplier_id=1)
 
 
 def _supply_candidate(edges):

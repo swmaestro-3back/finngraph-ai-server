@@ -47,7 +47,7 @@ async def _load_supply_evidence(conn, candidate: Candidate) -> None:
         if len(candidate.evidence) >= EVIDENCE_PER_CANDIDATE:
             break
         rows = await repository.fetch_edge_evidence(
-            conn, edge.subject_name, "SUPPLIES_TO", edge.object_name,
+            conn, edge.supplier_name, "SUPPLIES_TO", edge.root_name,
             limit=EVIDENCE_PER_EDGE,
         )
         for row in rows:

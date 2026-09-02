@@ -24,7 +24,7 @@ from langchain_core.runnables import Runnable
 from beneficiary.models import EvaluatorOutput, FilterOutput, NewsPlan
 from beneficiary.agent.prompts import (
     EVALUATOR_SYSTEM,
-    NEWS_PLAN_SYSTEM,
+    PLANNER_SYSTEM,
     SUPPLY_FILTER_SYSTEM,
     THEME_FILTER_SYSTEM,
 )
@@ -82,7 +82,7 @@ def _light_chat(temperature: float):
 
 @lru_cache
 def _plan_chain() -> Runnable:
-    return _chain(NEWS_PLAN_SYSTEM, NewsPlan, _light_chat(0.1), "plan_news")
+    return _chain(PLANNER_SYSTEM, NewsPlan, _light_chat(0.1), "plan_news")
 
 
 @lru_cache

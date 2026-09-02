@@ -12,8 +12,8 @@ from beneficiary.agent.utils.postprocess import apply_filter_output
 
 
 def _edge(gid, ticker="000002", market="KOSPI", dc=1, nc=0, items=("HBM",)):
-    return SupplyChainCandidate(gid=gid, root_name="루트 기업", subject_name=f"공급{gid}", object_name="루트 기업",
-                         ticker=ticker, name=f"공급{gid}", company_id=1, market=market,
+    return SupplyChainCandidate(gid=gid, root_name="루트 기업", supplier_name=f"공급{gid}",
+                         supplier_ticker=ticker, supplier_id=1, supplier_market=market,
                          disclosure_items=list(items), news_items=[],
                          disclosure_count=dc, news_mention_count=nc)
 

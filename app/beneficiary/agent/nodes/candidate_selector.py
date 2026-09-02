@@ -46,9 +46,9 @@ def _fold_supply(edges: list[SupplyChainCandidate]) -> dict[str, dict]:
     for edge in sorted(edges, key=lambda e: int(e.gid[1:])):
         if edge.relevance not in ("strong", "weak"):
             continue
-        entry = folded.setdefault(edge.ticker, {
-            "name": edge.name, "company_id": edge.company_id,
-            "market": edge.market,
+        entry = folded.setdefault(edge.supplier_ticker, {
+            "name": edge.supplier_name, "company_id": edge.supplier_id,
+            "market": edge.supplier_market,
             "strong": [], "weak": [],
         })
         entry[edge.relevance].append(edge)
@@ -58,13 +58,13 @@ def _fold_supply(edges: list[SupplyChainCandidate]) -> dict[str, dict]:
 def _supply_sort_key(entry: dict):
     constituents = entry["strong"] or entry["weak"]
     count_sum = sum(e.disclosure_count + e.news_mention_count for e in constituents)
-    return (-len(entry["strong"]), -count_sum, constituents[0].ticker)
+    return (-len(entry["strong"]), -count_sum, constituents[0].supplier_ticker)
 
 
 def _build_supply_candidate(ticker: str, entry: dict, promoted: bool) -> Candidate:
     constituents = entry["strong"] if entry["strong"] else entry["weak"]
     lines = list(dict.fromkeys(
-        f"{e.subject_name} →공급→ {e.object_name}" for e in constituents
+        f"{e.supplier_name} →공급→ {e.root_name}" for e in constituents
     ))
     return Candidate(
         ticker=ticker, name=entry["name"], company_id=entry["company_id"],

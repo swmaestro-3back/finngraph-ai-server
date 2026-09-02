@@ -124,12 +124,16 @@ _theme_subgraph = build_theme_subgraph()
 async def supply_track(state: GraphState) -> dict:
     """supply 서브그래프 래퍼 — 부모/자식 state 스키마를 잇는다."""
     result = await _supply_subgraph.ainvoke({
-        "news": state["news"], "plan": state["plan"],
+        "news": state["news"],
+        "plan": state["plan"],
         "root_companies": state["root_companies"],
         "relation_lines": state["relation_lines"],
     })
-    return {"edges": result.get("edges", []),
-            "supply_outcome": result.get("outcome") or TrackOutcome()}
+
+    return {
+        "edges": result.get("edges", []),
+        "supply_outcome": result.get("outcome") or TrackOutcome()
+    }
 
 
 async def theme_track(state: GraphState) -> dict:
@@ -141,18 +145,28 @@ async def theme_track(state: GraphState) -> dict:
     """
 
     plan = state["plan"]
+
+    # Planner가 시나리오를 생성하지 않았으면 바로 반환
     if not plan.scenario_probes:
-        return {"theme_hits": [],
-                "theme_outcome": TrackOutcome(
-                    status="no_pool",
-                    reason="이 사건에서 추적할 수혜 시나리오를 세우지 못했습니다.")}
+        return {
+            "theme_hits": [],
+            "theme_outcome": TrackOutcome(
+                status="no_pool",
+                reason="이 사건에서 추적할 수혜 시나리오를 세우지 못했습니다."
+            )
+        }
+    
     result = await _theme_subgraph.ainvoke({
-        "news": state["news"], "plan": plan,
+        "news": state["news"],
+        "plan": plan,
         "root_companies": state["root_companies"],
         "relation_lines": state["relation_lines"],
     })
-    return {"theme_hits": result.get("hits", []),
-            "theme_outcome": result.get("outcome") or TrackOutcome()}
+
+    return {
+        "theme_hits": result.get("hits", []),
+        "theme_outcome": result.get("outcome") or TrackOutcome()
+    }
 
 
 def build_beneficiary_graph():
@@ -188,17 +202,6 @@ def build_beneficiary_graph():
     builder.add_conditional_edges(
         "planner", route_after_plan, ["supply_track", "theme_track", END]
     )
-    # 트랙은 END 로 가지 않는다 — 조건부 엣지가 아니라 무조건 엣지다.
-    #
-    # 이 팬인이 배리어 없이 성립하는 근거는 "트랙 래퍼가 각각 노드 하나"라는
-    # 불변식이다. 두 트랙이 같은 슈퍼스텝에서 끝나므로, 문자열 소스 add_edge 가
-    # 공유하는 branch:to:candidate_selector 채널(EphemeralValue(guard=False))에
-    # 두 쓰기가 같은 스텝에 모이고 selector 는 정확히 한 번 돈다.
-    # 어느 한쪽 트랙이라도 슈퍼스텝을 여러 번 쓰는 경로로 바뀌면 이 전제가 깨져
-    # 짧은 쪽이 끝나는 순간 selector 가 먼저 돌아버린다. 그때는
-    # candidate_selector 를 defer=True 로 선언해야 한다(지금은 불변식이 성립하므로
-    # 걸지 않는다). 현행 팬인 테스트는 트랙을 단일 노드 가짜로 바꿔 넣기 때문에
-    # 이 회귀를 잡지 못한다 — 트랙 구조를 바꾸는 사람이 여기를 읽어야 한다.
     builder.add_edge("supply_track", "candidate_selector")
     builder.add_edge("theme_track", "candidate_selector")
     builder.add_conditional_edges(

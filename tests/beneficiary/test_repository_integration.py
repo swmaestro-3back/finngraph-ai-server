@@ -9,11 +9,11 @@
         ③ 근거뉴스에 공급사기업→루트기업 affirmed — 호재 e2e 에서
         finance_collector 의 affirmed 근거 조회가 0건이 되지 않게 하는 원장 행.
   Neo4j — Company: 루트기업(A), 상대기업(B), 공급사기업(C, KOSDAQ), 경쟁사기업(D),
-        자회사기업(E), 비상장공급(ticker·market 없음), 상폐공급(is_active false).
-        market·is_active 는 노드 필드로 적재된다(ETL 이 ticker 와 같은 시점에
+        자회사기업(E), 비상장공급(ticker·market 없음), 상폐공급(is_listed false).
+        market·is_listed 는 노드 필드로 적재된다(ETL 이 ticker 와 같은 시점에
         적재) — 시장·상장 필터는 Cypher 가 수행한다.
         SUPPLIES_TO: 공급사기업→루트기업(아이템·카운트 보유), 비상장공급→루트기업,
-        상폐공급→루트기업(is_active 게이트 확인용),
+        상폐공급→루트기업(is_listed 게이트 확인용),
         상대기업→루트기업(뉴스 당사자 제외 확인용), 경쟁사기업→상대기업.
         Theme: 테마1, 테마2 — BELONGS_TO 에 reason(+ reason_embedding).
         search_theme_reasons 는 테마1 의 reason 벡터만 쓴다.
@@ -140,23 +140,23 @@ async def seed(conn):
 UNWIND $rows AS row
 MERGE (c:Company {name: row.name})
 SET c.ticker = row.ticker, c.company_id = row.cid,
-    c.market = row.market, c.is_active = row.active
+    c.market = row.market, c.is_listed = row.listed
 """,
         {"rows": [
             {"name": names["root"], "ticker": ids["root_ticker"], "cid": ids["root_company_id"],
-             "market": "KOSPI", "active": True},
+             "market": "KOSPI", "listed": True},
             {"name": names["partner"], "ticker": ids["partner_ticker"], "cid": ids["partner_company_id"],
-             "market": "KOSPI", "active": True},
+             "market": "KOSPI", "listed": True},
             {"name": names["supplier"], "ticker": ids["supplier_ticker"], "cid": ids["supplier_company_id"],
-             "market": "KOSDAQ", "active": True},
+             "market": "KOSDAQ", "listed": True},
             {"name": names["rival"], "ticker": ids["rival_ticker"], "cid": ids["rival_company_id"],
-             "market": "KOSPI", "active": True},
+             "market": "KOSPI", "listed": True},
             {"name": names["subsid"], "ticker": ids["subsid_ticker"], "cid": ids["subsid_company_id"],
-             "market": "KOSDAQ", "active": True},
+             "market": "KOSDAQ", "listed": True},
             {"name": f"비상장공급-{uid}", "ticker": None, "cid": None,
-             "market": None, "active": None},
+             "market": None, "listed": None},
             {"name": f"상폐공급-{uid}", "ticker": f"Z{uid[:5].upper()}", "cid": None,
-             "market": "KOSDAQ", "active": False},
+             "market": "KOSDAQ", "listed": False},
         ]},
     )
     await neo4j_client.execute(
@@ -250,14 +250,13 @@ async def test_fetch_supply_neighbors_by_name(seed):
         exclude_names=[seed["root_name"], seed["partner_name"]],
         exclude_tickers=[seed["root_ticker"], seed["partner_ticker"]],
     )
-    # 비상장(ticker·market 없음)·상폐(is_active false)·뉴스 당사자(상대기업)
+    # 비상장(ticker·market 없음)·상폐(is_listed false)·뉴스 당사자(상대기업)
     # 제외 → 공급사기업만. 시장·상장 판정은 Cypher 의 노드 필드 필터 소관.
     assert [(r["name"], r["disclosure_count"], r["news_mention_count"]) for r in rows] == [
         (seed["supplier_name"], 2, 1)
     ]
     assert rows[0]["market"] == "KOSDAQ"  # 노드 필드에서 온 시장 구분
     assert rows[0]["disclosure_items"] == ["HBM"] and rows[0]["news_items"] == ["TC본더"]
-    assert rows[0]["object_name"] == seed["root_name"]
 
 
 async def test_pg_party_evidence_and_valuation_queries(conn, seed):
@@ -276,7 +275,7 @@ async def test_pg_party_evidence_and_valuation_queries(conn, seed):
 async def two_reason_vectors(seed):
     """search_theme_reasons 정렬·필터 검증 전용 픽스처.
 
-    실 벌크 데이터는 Company.is_active 가 비어 있어(Task 6 보고서 참고 —
+    실 벌크 데이터는 Company.is_listed 가 비어 있어(Task 6 보고서 참고 —
     finngraph-etl 쪽 데이터 갭) 상장 필터를 하나도 통과하지 못해, 실 그래프를
     그대로 조회하는 버전은 결과가 항상 비어 모든 assert 가 공허하게 참이
     됐다. seed 의 root·rival 두 기업의 theme1 편입 사유에 서로 다른 실
@@ -340,9 +339,9 @@ async def test_search_theme_reasons_returns_listed_domestic_only(seed, two_reaso
 async def scenario_reason_vector(seed):
     """search_theme_reasons exclusion 테스트 전용 픽스처.
 
-    실 벌크 데이터는 Company.is_active 가 전혀 채워져 있지 않아(Task 6 보고서
+    실 벌크 데이터는 Company.is_listed 가 전혀 채워져 있지 않아(Task 6 보고서
     참고 — finngraph-etl 쪽 데이터 갭, 이 계층의 문제가 아니다)
-    search_theme_reasons 의 상장 필터를 하나도 통과하지 못한다. is_active 를
+    search_theme_reasons 의 상장 필터를 하나도 통과하지 못한다. is_listed 를
     실제로 세팅하는 seed 픽스처의 root 기업 테마1 편입 사유에 실 Titan
     임베딩을 심어, 필터를 전부 만족하는 매치로 exclusion 로직을 검증한다.
     """
@@ -367,7 +366,7 @@ SET b.reason = $reason, b.reason_embedding = $embedding
 async def test_search_theme_reasons_honors_exclusions(seed, scenario_reason_vector):
     # min_score=0.9: 질의 임베딩이 시드된 reason_embedding 과 동일 텍스트에서 나와
     # 코사인이 1.0 에 근접(관측 0.9998) — 0.0 으로 낮추지 않고도 점수 게이트를
-    # 함께 검증하면서, 실 벌크 데이터의 최대 관측 점수(~0.77, is_active 갭으로
+    # 함께 검증하면서, 실 벌크 데이터의 최대 관측 점수(~0.77, is_listed 갭으로
     # 어차피 필터 탈락)보다 한참 위라 오탐 없이 seed 매치만 걸린다.
     baseline = await repository.search_theme_reasons(
         query_vector=scenario_reason_vector, exclude_names=[], exclude_tickers=[],

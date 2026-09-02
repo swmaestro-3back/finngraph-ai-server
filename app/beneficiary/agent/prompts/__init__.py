@@ -6,7 +6,7 @@ PROMPT_VERSION 은 응답·트레이스에 실리는 메타데이터다 — 프�
 """
 
 from beneficiary.agent.prompts.evaluator import EVALUATOR_SYSTEM
-from beneficiary.agent.prompts.news_plan import NEWS_PLAN_SYSTEM
+from beneficiary.agent.prompts.planner import PLANNER_SYSTEM
 from beneficiary.agent.prompts.supply_filter import SUPPLY_FILTER_SYSTEM
 from beneficiary.agent.prompts.theme_filter import THEME_FILTER_SYSTEM
 
@@ -20,7 +20,7 @@ DISCLAIMER = (
 __all__ = [
     "EVALUATOR_SYSTEM",
     "DISCLAIMER",
-    "NEWS_PLAN_SYSTEM",
+    "PLANNER_SYSTEM",
     "PROMPT_VERSION",
     "SUPPLY_FILTER_SYSTEM",
     "THEME_FILTER_SYSTEM",

@@ -6,7 +6,7 @@ import pytest
 
 from beneficiary.models import RootCompany, NewsPlan, NewsContext, RelationLine, ScenarioProbe
 from beneficiary.agent.nodes import planner
-from beneficiary.agent.nodes.planner import sanitize_plan
+from beneficiary.agent.nodes.planner import normalize_plan
 from beneficiary.agent.nodes.common import derive_exclusions
 
 
@@ -29,7 +29,7 @@ def test_sanitize_dedups_and_caps_core_items():
     plan = NewsPlan(
         event_summary="s", polarity="positive", core_items=["HBM", "HBM", "a", "b", "c", "d"],
     )
-    clean = sanitize_plan(plan)
+    clean = normalize_plan(plan)
     assert clean.core_items == ["HBM", "a", "b", "c", "d"]  # dedup + 상한 5
 
 
@@ -66,7 +66,7 @@ def test_sanitize_dedups_probes_by_stage_and_query():
             ScenarioProbe(stage=1, hypothesis="h3", query="   "),           # 빈 query
         ],
     )
-    probes = sanitize_plan(plan).scenario_probes
+    probes = normalize_plan(plan).scenario_probes
     assert [(p.stage, p.query) for p in probes] == [(1, "변압기"), (2, "변압기")]
 
 
@@ -79,7 +79,7 @@ def test_sanitize_drops_probe_with_blank_hypothesis():
             ScenarioProbe(stage=1, hypothesis="h", query="전선"),
         ],
     )
-    probes = sanitize_plan(plan).scenario_probes
+    probes = normalize_plan(plan).scenario_probes
     assert [(p.hypothesis, p.query) for p in probes] == [("h", "전선")]
 
 
@@ -89,7 +89,7 @@ def test_sanitize_caps_probes_at_four():
         scenario_probes=[ScenarioProbe(stage=1, hypothesis=f"h{i}", query=f"q{i}")
                          for i in range(6)],
     )
-    assert len(sanitize_plan(plan).scenario_probes) == 4
+    assert len(normalize_plan(plan).scenario_probes) == 4
 
 
 def test_sanitize_drops_probes_when_not_positive():
@@ -97,7 +97,7 @@ def test_sanitize_drops_probes_when_not_positive():
         event_summary="s", polarity="negative",
         scenario_probes=[ScenarioProbe(stage=1, hypothesis="h", query="q")],
     )
-    assert sanitize_plan(plan).scenario_probes == []
+    assert normalize_plan(plan).scenario_probes == []
 
 
 def test_derive_exclusions_unions_names_and_tickers():

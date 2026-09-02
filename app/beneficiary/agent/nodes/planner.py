@@ -36,7 +36,7 @@ def to_root_companies(rows: list[dict]) -> list[RootCompany]:
     ]
 
 
-def sanitize_plan(plan: NewsPlan) -> NewsPlan:
+def normalize_plan(plan: NewsPlan) -> NewsPlan:
     """LLM 출력 재강제 — 화이트리스트가 없으므로 형태 검증만 한다(스펙 §4.3).
 
     이전 판의 목록 대조(루트 기업명·테마명)는 사라졌다. 벡터 검색은 임의
@@ -63,17 +63,26 @@ def sanitize_plan(plan: NewsPlan) -> NewsPlan:
 
 async def build_plan(state: GraphState) -> dict:
     async with postgres_client.connection() as conn:
+        # Root Company 조회
         root_companies = to_root_companies(
             await repository.fetch_root_companies(conn, state["rep_news_id"])
         )
+
+        # Root Company가 없다면 종료
         if not root_companies:
-            return {"root_companies": [], "relation_lines": [], "plan": None,
-                    "status": "no_root_companies",
-                    "reason": "이 뉴스에서 상장 국내 기업 당사자를 찾지 못했습니다."}
+            return {
+                "root_companies": [],
+                "relation_lines": [],
+                "plan": None,
+                "status": "no_root_companies",
+                "reason": "이 뉴스에서 상장 국내 기업 당사자를 찾지 못했습니다."
+            }
+
+        # 뉴스 내 관계 조회
         relation_lines = await repository.fetch_relation_lines(conn, state["rep_news_id"])
 
     # LLM 실패를 정형 계획으로 덮지 않는다 — 예외는 그래프가 error 로 강등한다.
-    plan = sanitize_plan(
+    plan = normalize_plan(
         await llm.plan_news(pack_plan_context(state["news"], root_companies, relation_lines))
     )
 

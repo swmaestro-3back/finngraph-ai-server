@@ -1,6 +1,6 @@
 """뉴스 계획 프롬프트 (LLM#1, Haiku, temperature 0.1) — 극성 게이트·핵심 아이템·시나리오 probe."""
 
-NEWS_PLAN_SYSTEM = """[ROLE]
+PLANNER_SYSTEM = """[ROLE]
 You are a Korean stock-market news analyst. You receive one news event, the
 event's subject companies (root_companies — all domestic listed), and the
 relation lines the news described (including denied/terminated context).

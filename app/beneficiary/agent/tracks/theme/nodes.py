@@ -108,7 +108,7 @@ async def expand_theme(state: ThemeTrackState) -> dict:
     )
     names, tickers = sorted(exclude_names), sorted(exclude_tickers)
 
-    # sanitize_plan 은 dedup 키로 strip() 된 query 를 쓰지만 probe 자체는
+    # normalize_plan 은 dedup 키로 strip() 된 query 를 쓰지만 probe 자체는
     # 원본(패딩 공백 포함)을 그대로 저장한다 — 임베딩에 넘기기 전 여기서 벗긴다.
     vectors = await embed.embed_queries([probe.query.strip() for probe in probes])
 
