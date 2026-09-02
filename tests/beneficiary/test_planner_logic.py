@@ -70,12 +70,27 @@ def test_sanitize_dedups_probes_by_stage_and_query():
     assert [(p.stage, p.query) for p in probes] == [(1, "변압기"), (2, "변압기")]
 
 
+def test_sanitize_folds_multiline_hypothesis_into_one_line():
+    """가설이 3~4문장이라 줄바꿈이 섞여 와도 패킹의 한 줄 계약이 깨지지 않는다."""
+
+    plan = NewsPlan(
+        event_summary="s",
+        polarity="positive",
+        scenario_probes=[
+            ScenarioProbe(stage=1, hypothesis="  첫 문장이다.\n둘째 문장이다.\n\n  셋째 문장이다. ",
+                          query="변압기"),
+        ],
+    )
+    probe = normalize_plan(plan).scenario_probes[0]
+    assert probe.hypothesis == "첫 문장이다. 둘째 문장이다. 셋째 문장이다."
+
+
 def test_sanitize_drops_probe_with_blank_hypothesis():
     """가설이 공백이면 query 가 멀쩡해도 버린다 — 가설은 evaluator 가 대조할 문장이다."""
     plan = NewsPlan(
         event_summary="s", polarity="positive",
         scenario_probes=[
-            ScenarioProbe(stage=1, hypothesis="   ", query="변압기"),  # 빈 가설
+            ScenarioProbe(stage=1, hypothesis=" \n ", query="변압기"),  # 공백뿐인 가설
             ScenarioProbe(stage=1, hypothesis="h", query="전선"),
         ],
     )

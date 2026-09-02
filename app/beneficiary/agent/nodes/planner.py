@@ -51,11 +51,14 @@ def normalize_plan(plan: NewsPlan) -> NewsPlan:
         seen: set[tuple[int, str]] = set()
         for probe in plan.scenario_probes:
             query = probe.query.strip()
+            # 가설은 3~4문장이라 줄바꿈이 섞여 나올 수 있다 — 패킹은 후보 한 줄
+            # 형식이므로 여기서 공백으로 접어 한 줄 계약을 지킨다.
+            hypothesis = " ".join(probe.hypothesis.split())
             key = (probe.stage, query)
-            if not query or not probe.hypothesis.strip() or key in seen:
+            if not query or not hypothesis or key in seen:
                 continue
             seen.add(key)
-            probes.append(probe)
+            probes.append(probe.model_copy(update={"hypothesis": hypothesis}))
         probes = probes[:SCENARIO_PROBES_CAP]
 
     return plan.model_copy(update={"core_items": core_items, "scenario_probes": probes})

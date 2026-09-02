@@ -41,11 +41,13 @@ class RelationLine:
 
 
 @dataclass
-class TrackOutcome:
-    """트랙 서브그래프가 부모에 올리는 유일한 신호.
+class SubgraphResult:
+    """서브그래프가 부모에 올리는 종료 신호 — 산출물은 하위 클래스가 얹는다.
 
     status 는 정상 조기 종료(no_pool | no_candidates), error 는 장애다.
     둘 다 None 이면 정상이다 — 부모는 이 값을 예외가 아니라 값으로 받는다.
+
+    이 베이스만 받는 소비자(build_track_note)는 산출물을 보지 않는다는 뜻이다.
     """
 
     status: str | None = None
@@ -57,9 +59,9 @@ class TrackOutcome:
 class ThemeCandidate:
     """호재 theme 트랙 원시 후보 — reason 벡터 검색 히트 (티커 병합 후 1건)."""
 
-    tid: str | None  # 병합·절단 후 부여되는 tNN
-    stage: int  # 최고 점수를 준 probe 의 단계 (1=직접, 2=2차)
-    hypothesis: str  # 그 probe 의 가설 문장 — 근거 서사
+    tid: str | None
+    stage: int
+    hypothesis: str
     ticker: str
     name: str
     company_id: int | None
@@ -87,6 +89,20 @@ class SupplyChainCandidate:
     last_mentioned_at: str | None = None
     relevance: str | None = None  # None | strong | weak | irrelevant
     root_index: int = 0  # 루트 기업 순 정렬용 내부 값 (fetch_root_companies 순서)
+
+
+@dataclass
+class SupplySubgraphResult(SubgraphResult):
+    """supply 서브그래프가 부모에 올리는 것 전부 — 원시 후보 + 종료 신호."""
+
+    edges: list[SupplyChainCandidate] = field(default_factory=list)
+
+
+@dataclass
+class ThemeSubgraphResult(SubgraphResult):
+    """theme 서브그래프가 부모에 올리는 것 전부 — 원시 후보 + 종료 신호."""
+
+    hits: list[ThemeCandidate] = field(default_factory=list)
 
 
 @dataclass
@@ -153,7 +169,11 @@ class ScenarioProbe(BaseModel):
     stage: Literal[1, 2] = Field(
         description="1=사건의 직접 수혜, 2=그 수혜에서 파생되는 2차 수요"
     )
-    hypothesis: str = Field(description="이 단계의 수혜 논리 한국어 1문장 — 왜 이 수요가 생기는가")
+    hypothesis: str = Field(
+        description="이 단계의 수혜 논리 한국어 3~4문장 — 사건이 만든 수요가 무엇이고, "
+                    "어떤 경로로 이 단계까지 전달되며, 그 결과 어떤 제품·기술·역량의 "
+                    "수요가 생기는지까지 쓴다"
+    )
     query: str = Field(description="테마 편입 이유와 매칭될 검색 문구 — 명사구 중심, 기업명 금지")
 
 
