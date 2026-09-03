@@ -1,5 +1,5 @@
 [project]
-name = "finngraph-kg-api"
+name = "finngraph-ai-server"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
