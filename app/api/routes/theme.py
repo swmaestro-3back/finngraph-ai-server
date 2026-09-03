@@ -1,26 +1,19 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 
-import crud
-from schemas import GraphResponse
+import repository
+from schemas import ThemeResponse
 
 router = APIRouter(prefix="/api/v1", tags=["Themes"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/themes/{name}", response_model=GraphResponse)
-async def get_theme(
-    name: str,
-    hop: int = Query(1, ge=1, le=3),
-) -> GraphResponse:
-    """
-    특정 테마에 속한 주식들을 반환한다.
-    hop에 대한 기본값은 1(소속 주식만)이고, 최대 3까지 지정가능하다.
-    hop이 2 이상이면 각 소속 주식에서 바깥으로 hop-1 만큼 더 확장한다.
-    """
-    graph = await crud.get_theme_graph(name, hop)
-    if graph is None:
+@router.get("/themes/{name}", response_model=ThemeResponse)
+async def get_theme(name: str) -> ThemeResponse:
+    """특정 테마에 대한 정보와 그 테마에 속한 기업(테마주)들을 조회한다."""
+    theme = await repository.get_theme(name)
+    if theme is None:
         logger.info("Theme not found: %s", name)
         raise HTTPException(status_code=404, detail=f"Theme not found: {name}")
-    return graph
+    return theme
