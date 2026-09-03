@@ -44,12 +44,12 @@ def demote_to_outcome(fallback: dict) -> Callable:
 
 
 def _after_expand(state: ThemeTrackState) -> str:
-    return END if state.get("outcome") or not state.get("hits") else "filter_theme"
+    return END if state.get("outcome") or not state.get("candidates") else "filter_theme"
 
 
 async def _expand(state: ThemeTrackState) -> dict:
     result = await nodes.expand_theme(state)
-    if not result.get("hits"):
+    if not result.get("candidates"):
         return result | {"outcome": SubgraphResult(
             status="no_pool",
             reason="시나리오와 맞는 테마 편입 사유를 가진 상장 기업을 찾지 못했습니다.",
@@ -70,13 +70,13 @@ def build_theme_subgraph():
     builder = StateGraph(ThemeTrackState)
     builder.add_node("expand_theme", _expand,
                      retry_policy=DB_RETRY, timeout=DB_TIMEOUT,
-                     error_handler=demote_to_outcome({"hits": []}))
-    # 선별이 실패하면 남은 히트는 전부 relevance=None 이라 쓸 수 없다 — 원시
+                     error_handler=demote_to_outcome({"candidates": []}))
+    # 선별이 실패하면 남은 후보는 전부 relevance=None 이라 쓸 수 없다 — 원시
     # 리스트까지 비워야 팬인이 "원시 행은 있다"고 오해하지 않는다.
     builder.add_node("filter_theme", _filter,
                      timeout=LLM_TIMEOUT,
                      error_handler=demote_to_outcome(
-                         {"hits": [], "strong_ids": [], "weak_ids": []}))
+                         {"candidates": [], "strong_ids": [], "weak_ids": []}))
     builder.add_edge(START, "expand_theme")
     builder.add_conditional_edges("expand_theme", _after_expand, ["filter_theme", END])
     builder.add_edge("filter_theme", END)

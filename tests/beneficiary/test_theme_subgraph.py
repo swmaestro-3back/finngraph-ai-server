@@ -25,7 +25,7 @@ async def test_zero_hits_yields_no_pool_and_skips_filter(monkeypatch):
     called = {"filter": False}
 
     async def _no_hits(state):
-        return {"hits": []}
+        return {"candidates": []}
 
     async def _filter(state):
         called["filter"] = True
@@ -50,14 +50,14 @@ async def test_search_failure_becomes_outcome_error(monkeypatch):
     result = await build_theme_subgraph().ainvoke(_inputs())
 
     assert result["outcome"].error is not None
-    assert result["hits"] == []
+    assert result["candidates"] == []
 
 
 @pytest.mark.asyncio
 async def test_filter_failure_also_clears_hits(monkeypatch):
     """선별 단계 실패도 원시 히트를 비운다 — expand 실패만 덮으면 구멍이 남는다."""
     async def _some_hits(state):
-        return {"hits": [object()]}
+        return {"candidates": [object()]}
 
     async def _boom(state):
         raise RuntimeError("bedrock timeout")
@@ -68,4 +68,4 @@ async def test_filter_failure_also_clears_hits(monkeypatch):
     result = await build_theme_subgraph().ainvoke(_inputs())
 
     assert result["outcome"].error is not None
-    assert result["hits"] == []
+    assert result["candidates"] == []

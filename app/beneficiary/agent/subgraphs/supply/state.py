@@ -7,19 +7,20 @@ from beneficiary.models import (
     NewsPlan,
     RelationLine,
     RootCompany,
-    SupplyChainCandidate,
+    SupplyCandidate,
+    SupplyEdgeCandidate,
     SubgraphResult,
 )
 
 
 class SupplyTrackState(TypedDict, total=False):
-    # 입력 (래퍼가 주입)
     news: NewsContext
     plan: NewsPlan
     root_companies: list[RootCompany]
     relation_lines: list[RelationLine]
 
-    edges: list[SupplyChainCandidate]
-    strong_ids: list[str]  # 관측 전용 — 부모로 올라가지 않는다
+    edges: list[SupplyEdgeCandidate]    # 공급망 간선 후보
+    candidates: list[SupplyCandidate]   # 공급망 기업 후보
+    strong_ids: list[str]
     weak_ids: list[str]
     outcome: SubgraphResult

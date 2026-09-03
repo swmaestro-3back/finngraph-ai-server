@@ -18,7 +18,7 @@ class ThemeTrackState(TypedDict, total=False):
     root_companies: list[RootCompany]
     relation_lines: list[RelationLine]
 
-    hits: list[ThemeCandidate]
-    strong_ids: list[str]  # 관측 전용 — 부모로 올라가지 않는다
+    candidates: list[ThemeCandidate]
+    strong_ids: list[str]
     weak_ids: list[str]
     outcome: SubgraphResult

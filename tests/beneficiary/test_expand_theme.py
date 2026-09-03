@@ -6,7 +6,7 @@ from beneficiary.models import ScenarioProbe, ThemeCandidate
 from beneficiary.agent.subgraphs.theme.nodes import (
     MATCHED_REASONS_CAP,
     MATCHED_THEMES_CAP,
-    THEME_POOL_CAP,
+    COMPANY_POOL_CAP,
     merge_theme_rows,
     truncate_and_assign_tids,
 )
@@ -46,12 +46,12 @@ def test_reason_text_preserves_theme_attribution():
 
 
 def test_truncate_sorts_stage_first_then_score_then_ticker():
-    hits = merge_theme_rows([
+    candidates = merge_theme_rows([
         (P2, [_row("000100", score=0.99)]),
         (P1, [_row("000300", score=0.70)]),
         (P1, [_row("000200", score=0.70)]),
     ])
-    ordered = truncate_and_assign_tids(hits)
+    ordered = truncate_and_assign_tids(candidates)
     assert [h.ticker for h in ordered] == ["000200", "000300", "000100"]
     assert [h.tid for h in ordered] == ["t01", "t02", "t03"]
 
@@ -69,22 +69,22 @@ def test_matched_themes_and_reasons_capped_across_probes():
 
 
 def test_pool_cap_truncation_keeps_sort_selected_survivors_and_assigns_tids_after_cut():
-    total = THEME_POOL_CAP + 5
+    total = COMPANY_POOL_CAP + 5
     # 인덱스가 클수록 점수가 높다 — 정렬 전에 원본 순서로 앞 60개를 잘랐다면
     # 정확히 반대(가장 낮은 점수 60개)가 살아남는다.
-    hits = [
+    candidates = [
         ThemeCandidate(
             tid=None, stage=1, hypothesis="가설", ticker=f"{i:06d}", name="회사",
             company_id=1, market="KOSPI", score=float(i),
         )
         for i in range(total)
     ]
-    ordered = truncate_and_assign_tids(hits)
+    ordered = truncate_and_assign_tids(candidates)
 
-    assert len(ordered) == THEME_POOL_CAP
+    assert len(ordered) == COMPANY_POOL_CAP
     assert ordered[0].tid == "t01"
-    assert ordered[-1].tid == f"t{THEME_POOL_CAP:02d}"
+    assert ordered[-1].tid == f"t{COMPANY_POOL_CAP:02d}"
 
     survivor_tickers = {h.ticker for h in ordered}
-    expected_survivors = {f"{i:06d}" for i in range(total - THEME_POOL_CAP, total)}
+    expected_survivors = {f"{i:06d}" for i in range(total - COMPANY_POOL_CAP, total)}
     assert survivor_tickers == expected_survivors

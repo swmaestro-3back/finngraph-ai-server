@@ -100,7 +100,7 @@ def _fake_graph(monkeypatch, on_supply, on_theme, selector_seen):
     async def _select(state):
         supply = state.get("supply_result") or SupplySubgraphResult()
         theme = state.get("theme_result") or ThemeSubgraphResult()
-        selector_seen.append({"edges": list(supply.edges), "hits": list(theme.hits)})
+        selector_seen.append({"supply": list(supply.candidates), "theme": list(theme.candidates)})
         return {"candidates": [], "status": "no_candidates"}
 
     monkeypatch.setattr(workflow, "build_plan", _plan)
@@ -117,17 +117,17 @@ async def test_fan_in_runs_once_with_both_tracks_results(monkeypatch):
     """
 
     async def _supply(state):
-        return {"supply_result": SupplySubgraphResult(edges=["e1"])}
+        return {"supply_result": SupplySubgraphResult(candidates=["e1"])}
 
     async def _theme(state):
-        return {"theme_result": ThemeSubgraphResult(hits=["t1"])}
+        return {"theme_result": ThemeSubgraphResult(candidates=["t1"])}
 
     seen: list[dict] = []
     graph = _fake_graph(monkeypatch, _supply, _theme, seen)
     await graph.ainvoke({"rep_news_id": 1, "news": NEWS})
 
     assert len(seen) == 1, f"팬인이 {len(seen)}번 돌았다 — 정확히 한 번이어야 한다"
-    assert seen[0] == {"edges": ["e1"], "hits": ["t1"]}
+    assert seen[0] == {"supply": ["e1"], "theme": ["t1"]}
 
 
 async def test_tracks_run_concurrently(monkeypatch):
@@ -141,17 +141,17 @@ async def test_tracks_run_concurrently(monkeypatch):
 
     async def _supply(state):
         await _rendezvous(state)
-        return {"supply_result": SupplySubgraphResult(edges=["e1"])}
+        return {"supply_result": SupplySubgraphResult(candidates=["e1"])}
 
     async def _theme(state):
         await _rendezvous(state)
-        return {"theme_result": ThemeSubgraphResult(hits=["t1"])}
+        return {"theme_result": ThemeSubgraphResult(candidates=["t1"])}
 
     seen: list[dict] = []
     graph = _fake_graph(monkeypatch, _supply, _theme, seen)
     await graph.ainvoke({"rep_news_id": 1, "news": NEWS})
 
-    assert seen and seen[0] == {"edges": ["e1"], "hits": ["t1"]}
+    assert seen and seen[0] == {"supply": ["e1"], "theme": ["t1"]}
 
 
 async def test_failed_track_does_not_discard_the_other(monkeypatch):
@@ -161,14 +161,14 @@ async def test_failed_track_does_not_discard_the_other(monkeypatch):
         return {"supply_result": SupplySubgraphResult(error="neo4j down")}
 
     async def _theme(state):
-        return {"theme_result": ThemeSubgraphResult(hits=["t1"])}
+        return {"theme_result": ThemeSubgraphResult(candidates=["t1"])}
 
     seen: list[dict] = []
     graph = _fake_graph(monkeypatch, _supply, _theme, seen)
     await graph.ainvoke({"rep_news_id": 1, "news": NEWS})
 
     assert len(seen) == 1
-    assert seen[0]["hits"] == ["t1"]
+    assert seen[0]["theme"] == ["t1"]
 
 
 # --- theme 래퍼 -----------------------------------------------------------
@@ -185,7 +185,7 @@ async def test_theme_track_skips_subgraph_when_no_probes(monkeypatch):
     result = await theme_track({"news": NEWS, "plan": NO_PROBES,
                                 "root_companies": [], "relation_lines": []})
 
-    assert result["theme_result"].hits == []
+    assert result["theme_result"].candidates == []
     assert result["theme_result"].status == "no_pool"
     assert result["theme_result"].reason
 
@@ -193,14 +193,14 @@ async def test_theme_track_skips_subgraph_when_no_probes(monkeypatch):
 async def test_theme_track_invokes_subgraph_when_probes_exist(monkeypatch):
     class _Stub:
         async def ainvoke(self, state):
-            return {"hits": ["t1"], "outcome": SubgraphResult(status="no_candidates")}
+            return {"candidates": ["t1"], "outcome": SubgraphResult(status="no_candidates")}
 
     monkeypatch.setattr(workflow, "_theme_subgraph", _Stub())
 
     result = await theme_track({"news": NEWS, "plan": POSITIVE,
                                 "root_companies": [], "relation_lines": []})
 
-    assert result["theme_result"].hits == ["t1"]
+    assert result["theme_result"].candidates == ["t1"]
     assert result["theme_result"].status == "no_candidates"
 
 
@@ -208,7 +208,7 @@ async def test_theme_track_invokes_subgraph_when_probes_exist(monkeypatch):
 
 def test_stop_or_passes_through_only_when_not_stopped():
     route = stop_or("candidate_selector")
-    assert route({"edges": [object()]}) == "candidate_selector"
+    assert route({"candidates": [object()]}) == "candidate_selector"
     assert route({"error": "x"}) == END
     assert route({"status": "no_candidates"}) == END
 
@@ -244,15 +244,9 @@ def test_track_wrappers_carry_no_retry_or_timeout():
 
 
 def test_demote_to_error_writes_error_and_fallback_keys():
-    handler = demote_to_error({"edges": []})
+    handler = demote_to_error({"candidates": []})
     command = handler({}, NodeError(node="expand_supply", error=RuntimeError("neo4j down")))
-    assert command.update == {"edges": [], "error": "neo4j down"}
+    assert command.update == {"candidates": [], "error": "neo4j down"}
     # 강등된 상태를 그 노드의 라우터에 물리면 END 로 나간다 (폴백 없음).
     assert stop_or("filter_supply")(command.update) == END
 
-
-def test_demote_to_error_fallback_can_read_state():
-    handler = demote_to_error(lambda state: {"pool_size": len(state.get("candidates", []))})
-    command = handler({"candidates": [object(), object()]},
-                      NodeError(node="evaluator", error=RuntimeError("bedrock down")))
-    assert command.update == {"pool_size": 2, "error": "bedrock down"}

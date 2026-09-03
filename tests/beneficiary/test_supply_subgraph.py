@@ -70,7 +70,7 @@ async def test_node_exception_is_demoted_to_outcome_error(monkeypatch):
 
     # 예외는 서브그래프 밖으로 나가지 않는다 — 값으로 받는다
     assert result["outcome"].error is not None
-    assert result["edges"] == []
+    assert result["edges"] == [] and result.get("candidates", []) == []
 
 
 @pytest.mark.asyncio
@@ -93,4 +93,4 @@ async def test_filter_failure_also_clears_edges(monkeypatch):
     result = await build_supply_subgraph().ainvoke(_inputs())
 
     assert result["outcome"].error is not None
-    assert result["edges"] == []
+    assert result["edges"] == [] and result["candidates"] == []

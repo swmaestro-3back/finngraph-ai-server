@@ -75,18 +75,18 @@ DB_TIMEOUT = timedelta(seconds=60)
 LLM_TIMEOUT = timedelta(seconds=180)
 
 
-def demote_to_error(fallback: dict | Callable[[GraphState], dict]):
+def demote_to_error(fallback: dict):
     """노드 예외 → error 강등 핸들러. retry_policy 가 소진된 뒤에만 불린다.
 
     반환한 update 가 상태에 병합되면 그 노드의 조건부 엣지가 error 를 보고
     END 로 보낸다. 대체값을 지어내는 폴백은 없다 — fallback 은 그 노드가
     쓰기로 한 키를 빈 값으로 확정할 뿐이고, 서비스는 error 를 503 으로 맵핑한다.
+    그래서 fallback 은 state 를 보지 않는 상수 dict 다.
     """
 
     def handler(state: GraphState, error: NodeError) -> Command:
         logger.error("노드 실패: %s", error.node, exc_info=error.error)
-        update = fallback(state) if callable(fallback) else dict(fallback)
-        return Command(update={**update, "error": str(error.error)})
+        return Command(update={**fallback, "error": str(error.error)})
 
     return handler
 
@@ -134,7 +134,7 @@ async def supply_track(state: GraphState) -> dict:
     return {
         "supply_result": SupplySubgraphResult(
             status=signal.status, reason=signal.reason, error=signal.error,
-            edges=result.get("edges", []),
+            candidates=result.get("candidates", []),
         )
     }
 
@@ -169,7 +169,7 @@ async def theme_track(state: GraphState) -> dict:
     return {
         "theme_result": ThemeSubgraphResult(
             status=signal.status, reason=signal.reason, error=signal.error,
-            hits=result.get("hits", []),
+            candidates=result.get("candidates", []),
         )
     }
 
@@ -198,9 +198,7 @@ def build_beneficiary_graph():
     builder.add_node(
         "evaluator", evaluate,
         timeout=LLM_TIMEOUT,
-        error_handler=demote_to_error(
-            lambda state: {"items": [], "pool_size": len(state.get("candidates", []))}
-        ),
+        error_handler=demote_to_error({"items": []}),
     )
 
     builder.add_edge(START, "planner")

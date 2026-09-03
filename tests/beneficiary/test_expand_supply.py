@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from beneficiary.agent.subgraphs.supply.nodes import SUPPLY_POOL_CAP, build_edge_candidates, truncate_and_assign_gids
+from beneficiary.agent.subgraphs.supply.nodes import EDGE_POOL_CAP, build_edge_candidates, truncate_and_assign_gids
 
 
 def _row(subject, ticker="000002", dc=1, nc=0):
@@ -12,33 +12,33 @@ def _row(subject, ticker="000002", dc=1, nc=0):
 
 
 def test_build_dedupes_same_edge_and_keeps_root_index():
-    edges = build_edge_candidates([
+    candidates = build_edge_candidates([
         (0, "루트 기업", [_row("공급사A", ticker="000002"), _row("공급사A", ticker="000002")]),
         (1, "부루트 기업", [_row("공급사B", ticker="000003")]),
     ])
-    assert [(e.supplier_name, e.root_name, e.root_index) for e in edges] == [
+    assert [(e.supplier_name, e.root_name, e.root_index) for e in candidates] == [
         ("공급사A", "루트 기업", 0), ("공급사B", "부루트 기업", 1),
     ]
 
 
 def test_gid_order_is_root_then_count_desc_then_ticker():
-    edges = build_edge_candidates([
+    candidates = build_edge_candidates([
         (0, "루트 기업", [_row("공급사B", ticker="000003", dc=1),
                      _row("공급사A", ticker="000002", dc=5),
                      _row("공급사C", ticker="000001", dc=1)]),  # dc 동점 → ticker asc
         (1, "부루트 기업", [_row("공급사D", ticker="000009", dc=9)]),
     ])
-    ordered = truncate_and_assign_gids(edges)
+    ordered = truncate_and_assign_gids(candidates)
     assert [(e.gid, e.supplier_name) for e in ordered] == [
         ("g01", "공급사A"), ("g02", "공급사C"), ("g03", "공급사B"), ("g04", "공급사D"),
     ]
 
 
 def test_truncation_evicts_lowest_count_sum():
-    rows = [_row(f"공급사{i}", ticker=f"{i:06d}", dc=2) for i in range(SUPPLY_POOL_CAP)]
+    rows = [_row(f"공급사{i}", ticker=f"{i:06d}", dc=2) for i in range(EDGE_POOL_CAP)]
     rows.append(_row("영건공급사", ticker="999999", dc=0, nc=0))  # 유일한 합 0 간선
     ordered = truncate_and_assign_gids(build_edge_candidates([(0, "루트 기업", rows)]))
-    assert len(ordered) == SUPPLY_POOL_CAP
+    assert len(ordered) == EDGE_POOL_CAP
     assert all(e.supplier_ticker != "999999" for e in ordered)  # 최저 합 간선이 밀려난다
     kept_sums = [e.disclosure_count + e.news_mention_count for e in ordered]
-    assert min(kept_sums) == 2 and len({e.gid for e in ordered}) == SUPPLY_POOL_CAP
+    assert min(kept_sums) == 2 and len({e.gid for e in ordered}) == EDGE_POOL_CAP
