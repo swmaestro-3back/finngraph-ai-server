@@ -365,7 +365,7 @@ wheels = [
 ]
 
 [[package]]
-name = "finngraph-kg-api"
+name = "finngraph-ai-server"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

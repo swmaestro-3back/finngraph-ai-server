@@ -2,11 +2,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """
-    pydantic-settings로 .env를 읽어 타입 검증된 설정 객체를 만든다.
-    환경변수가 필요한 코드는 os.getenv가 아니라 이 settings 인스턴스를 import해서 쓴다.
-    """
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -17,6 +12,19 @@ class Settings(BaseSettings):
     neo4j_username: str
     neo4j_password: str
     neo4j_database: str
+
+    database_url: str | None = None
+
+    bedrock_region: str = "us-east-1"
+    aws_bearer_token_bedrock: str | None = None
+    bedrock_embedding_model: str | None = None
+    bedrock_hypothesis_model: str | None = None
+    bedrock_evaluator_model: str | None = None
+
+    langsmith_tracing: bool = False
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_api_key: str | None = None
+    langsmith_project: str | None = None
 
 
 settings = Settings()

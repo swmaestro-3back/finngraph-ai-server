@@ -1,13 +1,10 @@
-name: finngraph-kg-api
+name: finngraph-ai-server
 
 services:
-  # 내 FastAPI 어플리케이션
   api:
-    # Dockerfile 이 루트에 있으므로 dockerfile 경로 지정 없이 context 만으로 충분하다.
-    # (context 는 COPY 등의 기준 폴더. Docker 는 기본으로 이 폴더의 ./Dockerfile 을 읽는다)
     build: .
-    image: finngraph-kg-api
-    container_name: finngraph-kg-api
+    image: finngraph-ai-server
+    container_name: finngraph-ai-server
     ports:
       # port mapping
       - "8000:8000"
