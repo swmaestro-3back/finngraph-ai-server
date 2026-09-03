@@ -56,6 +56,19 @@ async def test_negative_polarity_stops_with_not_positive(monkeypatch):
     assert "호재" in result["reason"]
 
 
+def test_sanitize_folds_demand_shift_and_certainty_into_one_line():
+    """패킹이 한 줄 라벨 형식이라 여러 문장으로 와도 줄바꿈을 접는다."""
+    plan = NewsPlan(
+        event_summary="s", polarity="positive",
+        demand_shift="증설 지출은 공정 장비로 간다.\n완제품 부품사는 수령자가 아니다.",
+        certainty="계약  체결로\n확정됐다.",
+    )
+    clean = normalize_plan(plan)
+    assert "\n" not in clean.demand_shift and "\n" not in clean.certainty
+    assert clean.demand_shift.endswith("수령자가 아니다.")
+    assert clean.certainty == "계약 체결로 확정됐다."  # 연속 공백도 접힌다
+
+
 def test_sanitize_dedups_probes_by_stage_and_query():
     plan = NewsPlan(
         event_summary="s", polarity="positive",

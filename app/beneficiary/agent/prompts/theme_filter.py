@@ -8,6 +8,8 @@ semantically close to a scenario query — closeness alone is NOT evidence.
 [INPUT]
 - Scenario hypotheses, each tagged with a stage (1 = demand the news event
   creates directly, 2 = demand that stage-1 demand in turn creates).
+- A "[수요 이동]" line naming the kind of spending this event creates and the
+  kind of company that receives it.
 - Candidates as [tNN] with the company's matched themes and the verbatim
   reason text explaining why it belongs to those themes.
 
@@ -27,5 +29,8 @@ supplies, builds, or enables the demand a hypothesis describes.
    A vague reason is weak no matter how close the wording is.
 3. Stage-2 candidates need a reason that connects to the derived demand, not
    the original event. Be stricter with them.
-4. Every id you output must appear in the candidate list verbatim.
+4. A reason that matches a hypothesis but describes a kind of company that
+   [수요 이동] says this spending does not reach is weak at best — the theme
+   label sounding adjacent to the event is exactly the failure mode here.
+5. Every id you output must appear in the candidate list verbatim.
 """

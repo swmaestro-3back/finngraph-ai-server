@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from beneficiary.models import FilterOutput, NewsPlan, ScenarioProbe, SupplyChainCandidate, ThemeCandidate
+from beneficiary.models import FilterOutput, NewsPlan, ScenarioProbe, SupplyEdgeCandidate, ThemeCandidate
 from beneficiary.agent.subgraphs.supply import nodes as supply_module
 from beneficiary.agent.subgraphs.theme import nodes as theme_nodes
 from beneficiary.agent.utils import llm
@@ -12,20 +12,20 @@ from beneficiary.agent.utils.postprocess import apply_filter_output
 
 
 def _edge(gid, ticker="000002", market="KOSPI", dc=1, nc=0, items=("HBM",)):
-    return SupplyChainCandidate(gid=gid, root_name="루트 기업", supplier_name=f"공급{gid}",
+    return SupplyEdgeCandidate(gid=gid, root_name="루트 기업", supplier_name=f"공급{gid}",
                          supplier_ticker=ticker, supplier_id=1, supplier_market=market,
                          disclosure_items=list(items), news_items=[],
                          disclosure_count=dc, news_mention_count=nc)
 
 
 def test_apply_filter_output_reenforces_rules():
-    edges = {e.gid: e for e in [_edge("g01"), _edge("g02"), _edge("g03", items=()), _edge("g04")]}
+    by_gid = {e.gid: e for e in [_edge("g01"), _edge("g02"), _edge("g03", items=()), _edge("g04")]}
     output = FilterOutput(strong=["g01", "g02", "g03", "gXX"], weak=["g02"])
-    strong_ids, weak_ids = apply_filter_output(output, edges, cap_weak_ids={"g03"})
+    strong_ids, weak_ids = apply_filter_output(output, by_gid, cap_weak_ids={"g03"})
     assert strong_ids == ["g01", "g02"]      # gXX 폐기, g02 는 strong 우선
     assert weak_ids == ["g03"]               # 아이템 없는 간선은 최대 weak
-    assert edges["g04"].relevance == "irrelevant"  # 응답에서 빠진 id
-    assert edges["g01"].relevance == "strong" and edges["g03"].relevance == "weak"
+    assert by_gid["g04"].relevance == "irrelevant"  # 응답에서 빠진 id
+    assert by_gid["g01"].relevance == "strong" and by_gid["g03"].relevance == "weak"
 
 
 async def test_filter_supply_node_propagates_llm_error(monkeypatch):
@@ -54,6 +54,30 @@ async def test_filter_supply_node_stops_when_no_core_items(monkeypatch):
     assert result["status"] == "no_candidates" and result["reason"]
 
 
+async def test_filter_supply_grades_edges_then_merges_by_company(monkeypatch):
+    """판정은 간선 단위, 반환은 기업 단위 — strong 이 있으면 weak 간선은 구성에서 빠진다."""
+
+    async def fake_filter(prompt):
+        return FilterOutput(strong=["g01"], weak=["g02", "g03"])
+
+    monkeypatch.setattr(llm, "filter_supply", fake_filter)
+    plan = NewsPlan(event_summary="s", polarity="positive", core_items=["HBM"])
+    edges = [_edge("g01", ticker="000001"),   # 같은 기업의 strong
+             _edge("g02", ticker="000001"),   # 같은 기업의 weak → 구성에서 제외
+             _edge("g03", ticker="000002"),   # weak 단독 기업
+             _edge("g04", ticker="000003")]   # 응답에서 빠짐 → irrelevant, 사라진다
+
+    result = await supply_module.filter_supply({"edges": edges, "plan": plan})
+
+    assert result["strong_ids"] == ["g01"] and result["weak_ids"] == ["g02", "g03"]
+    merged = {c.ticker: c for c in result["candidates"]}
+    assert set(merged) == {"000001", "000002"}  # irrelevant 만 남은 기업은 없다
+    assert merged["000001"].relevance == "strong"
+    assert [e.gid for e in merged["000001"].edges] == ["g01"]  # weak 간선 제외
+    assert merged["000002"].relevance == "weak"
+    assert result["edges"] is edges  # 간선 목록은 관측용으로 그대로 남는다
+
+
 def _hit(tid, score, ticker="005930"):
     return ThemeCandidate(tid=tid, stage=1, hypothesis="h", ticker=ticker,
                           name="회사", company_id=1, market="KOSPI", score=score,
@@ -62,7 +86,7 @@ def _hit(tid, score, ticker="005930"):
 
 async def test_borderline_score_cannot_be_strong(monkeypatch):
     """임계값 언저리 후보는 LLM 이 strong 을 줘도 코드가 weak 로 강등한다."""
-    hits = [_hit("t01", theme_nodes.MIN_SCORE + 0.001, "000001"),   # 언저리
+    candidates = [_hit("t01", theme_nodes.MIN_SCORE + 0.001, "000001"),   # 언저리
             _hit("t02", theme_nodes.MIN_SCORE + 0.10, "000002")]    # 충분(0.72 — 실측 true positive 대역)
 
     async def _fake_filter(prompt):
@@ -70,7 +94,7 @@ async def test_borderline_score_cannot_be_strong(monkeypatch):
 
     monkeypatch.setattr(theme_nodes.llm, "filter_theme", _fake_filter)
 
-    state = {"hits": hits,
+    state = {"candidates": candidates,
              "plan": NewsPlan(event_summary="s", polarity="positive",
                               scenario_probes=[ScenarioProbe(stage=1, hypothesis="h",
                                                              query="q")])}
@@ -78,4 +102,4 @@ async def test_borderline_score_cannot_be_strong(monkeypatch):
 
     assert result["strong_ids"] == ["t02"]
     assert result["weak_ids"] == ["t01"]
-    assert hits[0].relevance == "weak" and hits[1].relevance == "strong"
+    assert candidates[0].relevance == "weak" and candidates[1].relevance == "strong"

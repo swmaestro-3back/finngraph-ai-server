@@ -6,8 +6,6 @@ validate_and_rank: 심사(LLM#3) 재강제 — 후보별 eid 스코프 + 시장 
 
 from __future__ import annotations
 
-import re
-
 from beneficiary.models import Candidate, EvaluatorOutput, FilterOutput, RankedItem
 
 
@@ -50,8 +48,6 @@ def apply_filter_output(
     return strong_ids, weak_ids
 
 
-CITATION_RE = re.compile(r"\[e\d+\]")
-
 RECOMMEND_PER_MARKET = 2  # 최종 추천 시장당 상한 — 프롬프트만으로 2+2 를 보증하지 않는다
 
 
@@ -59,18 +55,18 @@ def validate_and_rank(
     evaluation: EvaluatorOutput,
     by_cid: dict[str, Candidate],
     eids_by_cid: dict[str, set[str]],
-    track_note: str | None = None,
 ) -> list[RankedItem]:
     """심사 출력 재강제 (스펙 §4.8).
 
     ① eid 검증은 후보별 스코프: insight 의 evidence_ids 는 그 후보 자신의 eid
     집합에 속해야 한다(전역 집합 검증은 남의 근거로 접지되는 구멍).
     ② 시장 쿼터 코드 강제: insight 순서를 유지하며 시장별 최대 2개만 남긴다.
-    ③ 비실존 cid/eid 폐기, 인용 없는 rationale low 강등, 중복 cid 는 첫 판정만,
-    benefit 아닌 impact 폐기 — impact 는 pydantic Literal 로도 막혀 있지만
-    방어적으로 한 번 더 거른다.
-    ④ track_note 가 있으면 (한 탐색 축이 비었거나 실패했을 때) 모든 캐비앗에
-    접미한다 — 프롬프트가 아니라 코드가 사용자에게 그 사실을 보증한다.
+    ③ 비실존 cid/eid 폐기, 중복 cid 는 첫 판정만, benefit 아닌 impact 폐기 —
+    impact 는 pydantic Literal 로도 막혀 있지만 방어적으로 한 번 더 거른다.
+
+    rationale·caveats 는 사용자에게 그대로 나가는 서술이라 본문에 [eNN] 을 쓰지
+    않는다(프롬프트 규칙 4). 접지 강제는 본문 인용이 아니라 ①의 evidence_ids
+    스코프 검증이 한다 — 자기 근거가 하나도 없는 판단은 여기서 폐기된다.
     """
 
     items: list[RankedItem] = []
@@ -90,20 +86,12 @@ def validate_and_rank(
             # 자기 근거가 하나도 없는 판단은 접지되지 않았으므로 버린다.
             continue
 
-        confidence = insight.confidence
-        if not CITATION_RE.search(insight.rationale):
-            confidence = "low"
-
-        caveats = insight.caveats
-        if track_note:
-            caveats = f"{caveats} {track_note}".strip() if caveats else track_note
-
         items.append(RankedItem(
             candidate=candidate,
             impact=insight.impact,
-            confidence=confidence,
+            confidence=insight.confidence,
             rationale=insight.rationale,
-            caveats=caveats,
+            caveats=insight.caveats,
             evidence_ids=evidence_ids,
         ))
 

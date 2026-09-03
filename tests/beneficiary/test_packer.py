@@ -6,7 +6,7 @@ from beneficiary.models import (
     RootCompany,
     Candidate,
     ScenarioProbe,
-    SupplyChainCandidate,
+    SupplyEdgeCandidate,
     Evidence,
     NewsContext,
     NewsPlan,
@@ -23,6 +23,10 @@ from beneficiary.agent.utils.packer import (
 NEWS = NewsContext(title="타이틀", summary="요약", published_at="2026-08-30", link="https://n.example/1")
 ROOT = RootCompany(company_id=1, name="루트기업", ticker="000001", description="설명")
 PLAN = NewsPlan(event_summary="사건", polarity="positive", core_items=["HBM"])
+PLAN_WITH_AXES = NewsPlan(
+    event_summary="사건", polarity="positive", core_items=["HBM"],
+    demand_shift="증설 지출은 공정 장비로 간다.", certainty="MOU 단계다.",
+)
 THEME_PLAN = NewsPlan(
     event_summary="사건", polarity="positive",
     scenario_probes=[ScenarioProbe(stage=1, hypothesis="직접 수혜 가설", query="q1"),
@@ -31,7 +35,7 @@ THEME_PLAN = NewsPlan(
 
 
 def _edge(gid="g01", items=("HBM",)):
-    return SupplyChainCandidate(gid=gid, root_name="루트기업", supplier_name="공급사",
+    return SupplyEdgeCandidate(gid=gid, root_name="루트기업", supplier_name="공급사",
                          supplier_ticker="000002", supplier_id=2, supplier_market="KOSPI",
                          disclosure_items=list(items), news_items=[], disclosure_count=2,
                          news_mention_count=5)
@@ -114,3 +118,17 @@ def test_pack_judge_shows_stage_label_only_for_staged_candidates():
     line2 = next(line for line in packed.prompt.splitlines() if line.startswith("[후보 c02]"))
     assert "차 파급" not in line1
     assert "2차 파급" in line2
+
+
+def test_plan_block_renders_axes_as_their_own_labeled_lines():
+    """수요 이동·확정성은 별도 줄 — 프롬프트가 라벨로 지목해 규칙을 건다."""
+    prompt = pack_supply_filter_context(PLAN_WITH_AXES, [])
+    lines = prompt.splitlines()
+    assert any(line.startswith("[수요 이동] 증설 지출은") for line in lines)
+    assert any(line.startswith("[확정성] MOU 단계다.") for line in lines)
+
+
+def test_plan_block_omits_axes_when_planner_left_them_empty():
+    lines = pack_supply_filter_context(PLAN, []).splitlines()
+    assert not any(line.startswith("[수요 이동]") or line.startswith("[확정성]")
+                   for line in lines)

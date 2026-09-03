@@ -67,7 +67,7 @@ async def get_news_beneficiaries(news_id: int) -> BeneficiaryResponse:
     status = state.get("status", "ok")
     logger.info(
         "수혜주 생성: %.1fs (풀 %d → 추천 %d, status=%s)",
-        time.monotonic() - started, state.get("pool_size", 0), len(items), status,
+        time.monotonic() - started, len(state.get("candidates", [])), len(items), status,
     )
 
     return BeneficiaryResponse(
@@ -76,6 +76,7 @@ async def get_news_beneficiaries(news_id: int) -> BeneficiaryResponse:
         status=status,
         reason=state.get("reason"),
         event_interpretation=state.get("event_interpretation"),
+        analysis_note=state.get("analysis_note"),
         items=[_item_out(item) for item in items],
         prompt_version=PROMPT_VERSION,
         disclaimer=DISCLAIMER,

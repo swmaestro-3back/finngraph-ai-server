@@ -8,7 +8,7 @@ import pytest
 
 import sys
 
-from beneficiary.models import Candidate, SupplyChainCandidate, NewsContext
+from beneficiary.models import Candidate, SupplyEdgeCandidate, NewsContext
 from beneficiary import repository
 
 # Import the finance_collector submodule directly from sys.modules to bypass
@@ -36,7 +36,7 @@ def fake_db(monkeypatch):
 
 
 def _edge(gid, subject):
-    return SupplyChainCandidate(gid=gid, root_name="루트 기업", supplier_name=subject,
+    return SupplyEdgeCandidate(gid=gid, root_name="루트 기업", supplier_name=subject,
                          supplier_ticker="000001", supplier_id=1)
 
 
@@ -79,16 +79,24 @@ async def test_supply_candidate_with_zero_affirmed_evidence_is_dropped(monkeypat
     assert result["candidates"] == [] and "error" not in result  # 규칙 제거 (노드 실패 아님)
 
 
-async def test_theme_candidate_gets_news_and_theme_evidence():
+async def test_theme_candidate_gets_only_searched_theme_evidence():
+    """트리거 뉴스는 근거로 들어가지 않는다 — 서브그래프가 검색한 편입 사유만 실린다."""
     candidate = Candidate(ticker="000003", name="수혜사", company_id=3, track="theme",
                           market="KOSPI", matched_themes=["테마A"],
                           matched_reasons=["대체 생산 경쟁", "동일 제품"])
     result = await collector_module.collect_financials({"news": NEWS, "candidates": [candidate]})
     kept = result["candidates"][0]
     types = [e.type for e in kept.evidence]
-    assert types == ["news", "theme", "theme"]
-    assert kept.evidence[0].link == "https://n.example/1"  # 트리거 뉴스 근거
-    assert "대체 생산 경쟁" in kept.evidence[1].text and kept.evidence[1].link is None
+    assert types == ["theme", "theme"]
+    assert "대체 생산 경쟁" in kept.evidence[0].text and kept.evidence[0].link is None
+
+
+async def test_theme_candidate_without_reasons_is_dropped():
+    """편입 사유가 없으면 인용 가능한 근거가 0건 — 트리거 뉴스가 살려주지 않는다."""
+    candidate = Candidate(ticker="000005", name="사유없음", company_id=5, track="theme",
+                          market="KOSPI", matched_themes=["테마A"], matched_reasons=[])
+    result = await collector_module.collect_financials({"news": NEWS, "candidates": [candidate]})
+    assert result["candidates"] == []
 
 
 async def test_both_candidate_survives_without_supply_evidence(monkeypatch):
@@ -134,4 +142,4 @@ async def test_both_candidate_loads_supply_and_theme_evidence(monkeypatch):
     types = {e.type for e in kept.evidence}
     assert "disclosure" in types  # 공급망 축
     assert "theme" in types  # 테마 축
-    assert "news" in types  # 트리거 호재 뉴스
+    assert types == {"disclosure", "theme"}  # 트리거 뉴스는 근거가 아니다

@@ -10,7 +10,7 @@ from __future__ import annotations
 from beneficiary.models import (
     RootCompany,
     Candidate,
-    SupplyChainCandidate,
+    SupplyEdgeCandidate,
     NewsContext,
     NewsPlan,
     PackedContext,
@@ -29,8 +29,19 @@ def _news_block(news: NewsContext) -> list[str]:
 
 
 def _plan_block(plan: NewsPlan) -> list[str]:
+    """계획 블록 — 두 filter 와 evaluator 가 공유하는 판정 축.
+
+    수요 이동·확정성은 각각 별도 줄로 낸다. 한 줄에 뭉치면 프롬프트가 특정
+    축을 지목해 규칙을 걸 수 없다(supply·theme filter 가 [수요 이동]을 이름으로
+    참조한다).
+    """
+
     items = ", ".join(plan.core_items) if plan.core_items else "(없음)"
     lines = [f"[사건 계획] {plan.event_summary} / 극성: {plan.polarity} / 핵심 아이템: {items}"]
+    if plan.demand_shift:
+        lines.append(f"[수요 이동] {plan.demand_shift}")
+    if plan.certainty:
+        lines.append(f"[확정성] {plan.certainty}")
     if plan.scenario_probes:
         lines.append("[시나리오 가설 — stage 1 은 사건의 직접 수요, stage 2 는 파생 수요]")
         for probe in plan.scenario_probes:
@@ -75,9 +86,11 @@ def pack_plan_context(
 # ── LLM#2: 선별 ──────────────────────────────────────────────────────────────
 
 
-def pack_supply_filter_context(plan: NewsPlan, edges: list[SupplyChainCandidate]) -> str:
+def pack_supply_filter_context(
+    plan: NewsPlan, supply_candidates: list[SupplyEdgeCandidate]
+) -> str:
     lines = _plan_block(plan) + [""]
-    for edge in edges:
+    for edge in supply_candidates:
         items = _items_inline(list(dict.fromkeys([*edge.disclosure_items, *edge.news_items])))
         lines.append(
             f"[{edge.gid}] (루트: {edge.root_name}) {edge.supplier_name} →공급→ {edge.root_name}"
@@ -86,15 +99,17 @@ def pack_supply_filter_context(plan: NewsPlan, edges: list[SupplyChainCandidate]
     return "\n".join(lines)
 
 
-def pack_theme_filter_context(plan: NewsPlan, hits: list[ThemeCandidate]) -> str:
+def pack_theme_filter_context(
+    plan: NewsPlan, theme_candidates: list[ThemeCandidate]
+) -> str:
     lines = _plan_block(plan) + [""]
-    for hit in hits:
-        themes = ", ".join(hit.matched_themes)
+    for candidate in theme_candidates:
+        themes = ", ".join(candidate.matched_themes)
         lines.append(
-            f"[{hit.tid}] (stage {hit.stage}) {hit.name} ({hit.ticker})"
-            f" | 가설: {hit.hypothesis} | 테마: {themes}"
+            f"[{candidate.tid}] (stage {candidate.stage}) {candidate.name} ({candidate.ticker})"
+            f" | 가설: {candidate.hypothesis} | 테마: {themes}"
         )
-        for reason in hit.matched_reasons:
+        for reason in candidate.matched_reasons:
             lines.append(f"      편입 사유: {reason}")
     return "\n".join(lines)
 

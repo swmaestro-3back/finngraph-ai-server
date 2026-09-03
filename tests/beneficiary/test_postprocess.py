@@ -13,9 +13,9 @@ def _candidate(cid, ticker, market):
     return c
 
 
-def _insight(cid, eids, rationale="체크 통과 [e01]"):
+def _insight(cid, eids, rationale="HBM 납품 이력이 있고 영업이익이 3년 연속 늘었다."):
     return EvaluatorInsight(candidate_id=cid, impact="benefit", confidence="high",
-                        rationale=rationale, evidence_ids=eids)
+                        rationale=rationale, evidence_ids=eids, caveats="부채비율이 높다.")
 
 
 BY_CID = {
@@ -47,17 +47,25 @@ def test_market_quota_trims_to_two_preserving_order():
     assert [item.rank for item in items] == [1, 2, 3]
 
 
-def test_rules_reject_unknown_cid_dup_and_citationless_rationale():
+def test_rules_reject_unknown_cid_and_dup_and_filter_unknown_eid():
     evaluation = EvaluatorOutput(event_interpretation="해석", insights=[
-        _insight("cXX", ["e01"]),                       # 비실존 cid 폐기
-        _insight("c01", ["e01", "eZZ"]),                # 비실존 eid 필터
-        _insight("c01", ["e01"]),                       # 중복 cid — 첫 판정만
-        _insight("c04", ["e04"], rationale="인용 없음"),  # 인용 없는 rationale → low
+        _insight("cXX", ["e01"]),          # 비실존 cid 폐기
+        _insight("c01", ["e01", "eZZ"]),   # 비실존 eid 필터
+        _insight("c01", ["e01"]),          # 중복 cid — 첫 판정만
+        _insight("c04", ["e04"]),
     ])
     items = validate_and_rank(evaluation, BY_CID, EIDS)
     assert len(items) == 2
     assert items[0].evidence_ids == ["e01"]
-    assert items[1].confidence == "low"
+
+
+def test_confidence_is_taken_as_given_without_citation_in_prose():
+    """본문 [eNN] 인용은 더 이상 요구하지 않는다 — 접지는 evidence_ids 가 맡는다."""
+    evaluation = EvaluatorOutput(event_interpretation="해석", insights=[
+        _insight("c01", ["e01"], rationale="인용 기호 없이 쓴 사용자용 서술."),
+    ])
+    items = validate_and_rank(evaluation, BY_CID, EIDS)
+    assert [item.confidence for item in items] == ["high"]
 
 
 def test_track_note_distinguishes_empty_from_failed():
@@ -87,10 +95,9 @@ def test_track_note_covers_remaining_branches_and_error_precedence():
     assert "시나리오 테마" in note and "실패" in note
 
 
-def test_track_note_is_appended_to_every_caveat():
-    from beneficiary.models import (
-        Candidate, EvaluatorInsight, EvaluatorOutput, Evidence,
-    )
+def test_caveats_are_left_untouched_by_postprocess():
+    """캐비앗은 종목 한계만 담는다 — 탐색 축 현황은 응답의 analysis_note 로 나간다."""
+    from beneficiary.models import Candidate, EvaluatorInsight, EvaluatorOutput, Evidence
 
     candidate = Candidate(ticker="000001", name="회사", company_id=1, track="theme",
                           market="KOSPI", cid="c01")
@@ -99,13 +106,10 @@ def test_track_note_is_appended_to_every_caveat():
         event_interpretation="해석",
         insights=[EvaluatorInsight(candidate_id="c01", impact="benefit",
                                    confidence="medium",
-                                   rationale="근거 [e01] 에 따라 수혜다.",
+                                   rationale="테마 편입 사유가 시나리오와 맞는다.",
                                    evidence_ids=["e01"], caveats="기존 캐비앗")],
     )
 
-    items = validate_and_rank(evaluation, {"c01": candidate}, {"c01": {"e01"}},
-                              track_note="공급망 축에서는 후보를 찾지 못했습니다.")
+    items = validate_and_rank(evaluation, {"c01": candidate}, {"c01": {"e01"}})
 
-    assert items, "인용이 유효한 인사이트는 살아남아야 한다"
-    assert all("공급망 축에서는" in item.caveats for item in items)
-    assert "기존 캐비앗" in items[0].caveats   # 덮어쓰지 않고 접미한다
+    assert items and items[0].caveats == "기존 캐비앗"

@@ -64,8 +64,9 @@ def llm_stub(monkeypatch):
             event_interpretation="사건 해석",
             insights=[EvaluatorInsight(candidate_id=cids[0], impact="benefit",
                                    confidence="medium",
-                                   rationale=f"체크리스트 통과 [{eids[0]}]",
-                                   evidence_ids=eids)],
+                                   rationale="HBM용 부품을 납품해 온 이력이 있고 영업이익이 늘었다.",
+                                   evidence_ids=eids,
+                                   caveats="납품 규모가 매출에서 차지하는 비중은 확인할 수 없다.")],
             no_impact_ids=cids[1:],
         )
 
@@ -91,6 +92,11 @@ async def test_positive_track_recommends_supplier(seed, llm_stub):  # noqa: F811
     assert item.track == "supply" and item.market == "KOSDAQ"
     assert "HBM" in item.matched_items
     assert item.rank == 1 and item.evidence  # 근거 링크 포함
+
+    # 탐색 축 현황은 항목마다 붙지 않고 응답에 한 번만 실린다(analysis_note).
+    # 이 시나리오는 theme 축이 빈손이라 문장이 채워져야 한다.
+    assert response.analysis_note and "시나리오 테마" in response.analysis_note
+    assert item.caveats and "시나리오 테마 축" not in item.caveats  # 종목 한계만
 
     # 무캐시 — 같은 클러스터의 다른 뉴스 id 로 재호출하면 워크플로우가 다시 돈다.
     calls_before = llm_stub["plan_calls"]
@@ -136,7 +142,7 @@ async def test_not_positive_returns_200_with_empty_items(seed, monkeypatch):  # 
 
     async def _fake_graph(state, config=None):
         return {"status": "not_positive", "reason": "호재로 보기 어려운 뉴스입니다.",
-                "items": [], "pool_size": 0}
+                "items": []}
 
     monkeypatch.setattr(service.beneficiary_graph, "ainvoke", _fake_graph)
 
@@ -144,7 +150,7 @@ async def test_not_positive_returns_200_with_empty_items(seed, monkeypatch):  # 
 
     assert response.status == "not_positive"
     assert response.items == []
-    assert response.prompt_version == "c3"
+    assert response.prompt_version == "c7"
 
 
 @pytest_asyncio.fixture
@@ -214,7 +220,8 @@ async def test_theme_track_runs_end_to_end_and_recommends_theme_candidate(
                 continue
             insights.append(EvaluatorInsight(
                 candidate_id=match.group(1), impact="benefit", confidence="medium",
-                rationale=f"체크리스트 통과 [{eids[0]}]", evidence_ids=eids,
+                rationale="시나리오가 요구하는 제품을 다루는 기업이다.", evidence_ids=eids,
+                caveats="편입 사유는 시장의 테마 분류이지 기업 공시가 아니다.",
             ))
         return EvaluatorOutput(event_interpretation="사건 해석", insights=insights,
                                 no_impact_ids=[])

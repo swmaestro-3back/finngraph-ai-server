@@ -44,8 +44,8 @@ class GraphState(TypedDict, total=False):
 
     # evaluator
     items: list[RankedItem]
-    pool_size: int
     event_interpretation: str | None
+    analysis_note: str | None  # 한 탐색 축이 비었거나 실패했을 때의 분석 성격
 
     # 종료 신호 — status 는 ok | not_positive | no_root_companies | no_pool |
     # no_candidates | no_beneficiaries, reason 은 그 사유를 설명하는 사용자용 한 문장이다.

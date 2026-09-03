@@ -46,6 +46,11 @@ def normalize_plan(plan: NewsPlan) -> NewsPlan:
 
     core_items = list(dict.fromkeys(item for item in plan.core_items if item))[:CORE_ITEMS_CAP]
 
+    # 패킹이 한 줄 라벨 형식이라 2~3문장으로 오는 서술은 줄바꿈을 접는다
+    # (가설과 같은 계약).
+    demand_shift = " ".join(plan.demand_shift.split())
+    certainty = " ".join(plan.certainty.split())
+
     probes: list[ScenarioProbe] = []
     if plan.polarity == "positive":
         seen: set[tuple[int, str]] = set()
@@ -61,7 +66,10 @@ def normalize_plan(plan: NewsPlan) -> NewsPlan:
             probes.append(probe.model_copy(update={"hypothesis": hypothesis}))
         probes = probes[:SCENARIO_PROBES_CAP]
 
-    return plan.model_copy(update={"core_items": core_items, "scenario_probes": probes})
+    return plan.model_copy(update={
+        "core_items": core_items, "scenario_probes": probes,
+        "demand_shift": demand_shift, "certainty": certainty,
+    })
 
 
 async def build_plan(state: GraphState) -> dict:

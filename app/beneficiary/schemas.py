@@ -25,8 +25,8 @@ class BeneficiaryItemOut(BaseModel):
     matched_themes: list[str] = []
     impact: str  # benefit 고정
     confidence: str
-    rationale: str
-    caveats: str | None = None
+    rationale: str  # 사용자 노출 4~5문장
+    caveats: str  # 사용자 노출 4~5문장 — 종목별 한계만
     evidence: list[EvidenceOut] = []
     rank: int
 
@@ -37,6 +37,9 @@ class BeneficiaryResponse(BaseModel):
     status: str  # ok | no_root_companies | not_positive | no_pool | no_candidates | no_beneficiaries
     reason: str | None = None  # status != ok 일 때 어디서 왜 멈췄는지 한 문장
     event_interpretation: str | None = None
+    # 이번 분석 전체의 성격 — 한 탐색 축이 비었거나 실패했을 때만 채워진다.
+    # 종목별 한계가 아니므로 items[].caveats 가 아니라 여기 한 번만 실린다.
+    analysis_note: str | None = None
     items: list[BeneficiaryItemOut] = []
     prompt_version: str
     disclaimer: str

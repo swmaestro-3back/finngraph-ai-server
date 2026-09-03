@@ -22,6 +22,9 @@ def build_track_note(supply: SubgraphResult, theme: SubgraphResult) -> str | Non
     """탐색 축 현황을 사용자 문장으로 — 프롬프트가 아니라 코드가 보증한다(스펙 §7.6).
 
     "후보가 없었다"와 "장애로 못 돌았다"는 사용자에게 의미가 완전히 다르다.
+
+    이 문장은 개별 종목의 한계가 아니라 이번 분석 전체의 성격이다 — 그래서
+    항목마다 붙지 않고 응답의 analysis_note 로 한 번만 나간다.
     """
 
     if theme.error:
@@ -43,20 +46,24 @@ async def evaluate(state: GraphState) -> dict:
         state["news"], state["root_companies"], state["plan"], candidates
     )
     evaluator_output = await llm.evaluate_beneficiary(packed.prompt)
-    track_note = build_track_note(
+    items = validate_and_rank(evaluator_output, packed.by_cid, packed.eids_by_cid)
+    analysis_note = build_track_note(
         state.get("supply_result") or SubgraphResult(),
         state.get("theme_result") or SubgraphResult(),
     )
-    items = validate_and_rank(evaluator_output, packed.by_cid, packed.eids_by_cid,
-                              track_note=track_note)
 
+    # 수혜 아님(no_impact)까지 같이 찍는다 — 후보 4 → 추천 1 일 때 나머지 3 이
+    # LLM 이 탈락시킨 것인지 후처리(자기 근거 부재·시장 쿼터)가 떨어뜨린 것인지
+    # 로그만으로 갈린다. no_impact_ids 는 코드가 쓰지 않는 값이라 여기가 유일한
+    # 관측 지점이다.
     logger.info(
-        "evaluator: %.1fs (후보 %d → 추천 %d)",
+        "evaluator: %.1fs (후보 %d → 추천 %d, 수혜 아님 %d)",
         time.monotonic() - started, len(candidates), len(items),
+        len(evaluator_output.no_impact_ids),
     )
     return {
         "items": items,
-        "pool_size": len(candidates),
+        "analysis_note": analysis_note,
         "event_interpretation": evaluator_output.event_interpretation,
         "status": "ok" if items else "no_beneficiaries",
         "reason": None if items else "심사 결과 수혜로 볼 만한 후보가 없습니다.",

@@ -6,9 +6,9 @@ TableRAG 는 고정 쿼리 테이블 패킹이다 — text2SQL 금지(스키마�
 denied/terminated 행만으로 만들어진 간선이 후보를 만들 수 있는데, 그 후보는
 인용 가능한 [eNN] 이 없어 심사가 접지되지 않는다(스펙 §4.7).
 
-제거 판정은 두 축을 모두 적재한 뒤 evidence 전체로 한다(스펙 §7.4) — 실제로
-걸리는 건 순수 supply 후보뿐이다: _load_theme_evidence 가 트리거 뉴스를 항상
-1건 넣으므로 theme·both 후보는 이 게이트에 걸릴 수 없다.
+제거 판정은 두 축을 모두 적재한 뒤 evidence 전체로 한다(스펙 §7.4). 트리거
+뉴스는 근거로 싣지 않는다 — evidence 는 서브그래프가 실제로 검색해 온 것만
+담는다. 트리거 뉴스 자체는 패킹 헤더의 [뉴스] 블록으로 이미 심사에 들어간다.
 """
 
 from __future__ import annotations
@@ -62,26 +62,21 @@ async def _load_supply_evidence(conn, candidate: Candidate) -> None:
             ))
 
 
-def _load_theme_evidence(candidate: Candidate, news) -> None:
-    # ① 트리거 원 뉴스 — 수혜 시나리오의 사건 근거는 트리거 호재 뉴스 그 자체.
-    candidate.evidence.append(Evidence(
-        type="news", text=news.title, date=news.published_at, link=news.link,
-    ))
-    # ② 테마 편입 사유 — 링크 없는 그래프 유래 근거. expand_theme 이 "[테마명] 사유"
-    #    형태로 조립해 테마 귀속이 보존된다(스펙 §5.5).
+def _load_theme_evidence(candidate: Candidate) -> None:
+    # 테마 편입 사유 — 링크 없는 그래프 유래 근거. expand_theme 이 "[테마명] 사유"
+    # 형태로 조립해 테마 귀속이 보존된다(스펙 §5.5).
     for reason in candidate.matched_reasons:
         candidate.evidence.append(Evidence(type="theme", text=reason))
 
 
 async def collect_financials(state: GraphState) -> dict:
-    news = state["news"]
     kept: list[Candidate] = []
     async with postgres_client.connection() as conn:
         for candidate in state["candidates"]:
             if candidate.track in ("supply", "both"):
                 await _load_supply_evidence(conn, candidate)
             if candidate.track in ("theme", "both"):
-                _load_theme_evidence(candidate, news)
+                _load_theme_evidence(candidate)
             # 두 축 모두 빈손일 때만 제거한다 — both 후보가 공시 근거 부재로
             # 탈락하면 테마 근거를 가진 채 사라진다.
             if not candidate.evidence:

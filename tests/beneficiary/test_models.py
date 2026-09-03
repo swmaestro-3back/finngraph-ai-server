@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from beneficiary.models import (
     Candidate,
-    SupplyChainCandidate,
+    SupplyEdgeCandidate,
     FilterOutput,
     EvaluatorInsight,
     NewsPlan,
@@ -25,10 +25,15 @@ def test_news_plan_forces_binary_polarity():
 
 
 def test_judge_insight_allows_benefit_only():
-    ok = EvaluatorInsight(candidate_id="c01", impact="benefit", confidence="high", rationale="r [e01]")
+    ok = EvaluatorInsight(candidate_id="c01", impact="benefit", confidence="high",
+                          rationale="사용자용 서술", caveats="한계 서술")
     assert ok.evidence_ids == []
     with pytest.raises(ValidationError):
-        EvaluatorInsight(candidate_id="c01", impact="damage", confidence="high", rationale="r")
+        EvaluatorInsight(candidate_id="c01", impact="damage", confidence="high",
+                         rationale="r", caveats="c")
+    with pytest.raises(ValidationError):  # caveats 는 이제 필수다
+        EvaluatorInsight(candidate_id="c01", impact="benefit", confidence="high",
+                         rationale="r")
 
 
 def test_filter_output_defaults_empty():
@@ -40,7 +45,7 @@ def test_candidate_defaults():
     c = Candidate(ticker="000001", name="회사", company_id=1, track="supply")
     assert c.relevance == "strong" and c.promoted is False
     assert c.matched_items == [] and c.source_edges == [] and c.evidence == []
-    e = SupplyChainCandidate(gid=None, root_name="a", supplier_name="공급사",
+    e = SupplyEdgeCandidate(gid=None, root_name="a", supplier_name="공급사",
                       supplier_ticker="000002", supplier_id=2)
     assert e.relevance is None and e.disclosure_items == []
 
