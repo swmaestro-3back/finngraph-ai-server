@@ -19,13 +19,6 @@ Each read endpoint returns the nodes and relationships it covers, which a client
 interactive graph. Relationship provenance (source news and disclosures) is inlined in the
 response, so no follow-up fetch is needed.
 
-**API endpoints** (all prefixed with `/api/v1`):
-
-| Method & Path | Description |
-| --- | --- |
-| `GET /companies/{ticker}/supplychain` | Supply chain within `hop` (1-3) of the given company, following `SUPPLIES_TO` in both directions. Optional `market` (KOSPI / KOSDAQ) and `index` (krx100 / krx300 / kosdaq150) filters restrict paths to companies in that market or index. Returns `companies[]` + `relationships[]` |
-| `GET /themes/{name}` | A theme and the companies belonging to it. Returns `theme` + `companies[]` + `relationships[]` |
-
 ## Directory Structure
 
 ```
@@ -54,20 +47,16 @@ finngraph-kg-api/
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in the values.
+Copy .env.example to .env and fill in every value — Settings in app/core/config.py has no defaults, so a missing variable fails fast with a ValidationError at startup, even for variables you don't think you need (e.g. LangSmith tracing, or the API key of the LLM provider you aren't using).
 
 ```bash
 cp .env.example .env
 ```
 
-| Variable | Description |
-| --- | --- |
-| `NEO4J_URI` | Bolt connection URI (use `bolt://localhost:7687` for local runs) |
-| `NEO4J_USERNAME` | Neo4j username |
-| `NEO4J_PASSWORD` | Neo4j password |
-| `NEO4J_DATABASE` | Database name to use |
+All variables are declared in [`app/core/config.py`](app/core/config.py) (pydantic-settings), which
+loads them from `.env` at import time. Field names map to the upper-cased variable names below.
 
-> When running with Docker, `NEO4J_URI` is automatically overridden to `bolt://neo4j:7687` inside the container, so you can leave the `.env` value as the local one.
+> `.env.example` ships placeholders only. Keep real credentials in `.env`, which is gitignored — never commit them.
 
 ## How to Run
 
@@ -81,18 +70,24 @@ uv sync
 
 ### 2. Run with Docker
 
-Builds and starts both the API server and Neo4j.
-
-```bash
-docker compose up -d --build
-```
-
 - API: http://localhost:8000
 - **Swagger UI: http://localhost:8000/docs**
 - ReDoc: http://localhost:8000/redoc
 - Neo4j Browser: http://localhost:7474
 
+Builds and starts both the API server and Neo4j.
+
+```bash
+docker compose up -d
+```
+
 The image is not rebuilt automatically after you change the source, so always pass `--build`.
+
+```bash
+docker compose up -d --build
+```
+
+Use the commands below to check status, view logs, or stop containers:
 
 ```bash
 # check status
