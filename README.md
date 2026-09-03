@@ -8,22 +8,23 @@ Supports only `GET` methods - used exclusively in the knowledge graph explorer.
 
 Finngraph KG API exposes a **financial knowledge graph** stored in Neo4j over a REST API.
 
-The graph connects entities such as stocks (KOSPI / KOSDAQ / NYSE / NASDAQ), themes, commodities, products and countries through relationships like supply chains, exports, acquisitions,
-investments, and competition.
+The graph has exactly two node labels and two relationship types:
 
-Each read endpoint returns a **subgraph** (nodes + relationships) centered on the requested
-entity, which a client can render as an interactive graph. Edge details (full provenance such as
-source news and sentences) are fetched lazily per relationship.
+- `(:Company)` — KOSPI / KOSDAQ listed companies
+- `(:Theme)` — investment themes
+- `(:Company)-[:SUPPLIES_TO]->(:Company)` — supply chain, with news / disclosure provenance
+- `(:Company)-[:BELONGS_TO]->(:Theme)` — theme membership, with a `reason`
+
+Each read endpoint returns the nodes and relationships it covers, which a client can render as an
+interactive graph. Relationship provenance (source news and disclosures) is inlined in the
+response, so no follow-up fetch is needed.
 
 **API endpoints** (all prefixed with `/api/v1`):
 
 | Method & Path | Description |
 | --- | --- |
-| `GET /stock/{ticker}` | Subgraph within 3 hops of the given stock |
-| `GET /theme/{name}` | Subgraph centered on a theme |
-| `GET /product/{name}` | Subgraph centered on a product |
-| `GET /commodity/{name}` | Subgraph centered on a commodity |
-| `GET /relationship/{element_id}` | Full detail (provenance) of a single relationship |
+| `GET /companies/{ticker}/supplychain` | Supply chain within `hop` (1-3) of the given company, following `SUPPLIES_TO` in both directions. Optional `market` (KOSPI / KOSDAQ) and `index` (krx100 / krx300 / kosdaq150) filters restrict paths to companies in that market or index. Returns `companies[]` + `relationships[]` |
+| `GET /themes/{name}` | A theme and the companies belonging to it. Returns `theme` + `companies[]` + `relationships[]` |
 
 ## Directory Structure
 
@@ -31,17 +32,16 @@ source news and sentences) are fetched lazily per relationship.
 finngraph-kg-api/
 ├── app/
 │   ├── main.py               # FastAPI app entrypoint (lifespan, router mounting)
-│   ├── crud.py               # Neo4j query functions (subgraph / relationship lookups)
-│   ├── models.py             # Graph domain enums (NodeLabel, RelationshipType)
-│   ├── schemas.py            # Pydantic response schemas (GraphResponse, ...)
+│   ├── repository.py         # Neo4j READ 계층 (Cypher 정의 + 실행, 스키마 변환 위임)
+│   ├── mappers.py            # neo4j Record/Node/Relationship → 응답 스키마 변환
+│   ├── schemas.py            # Pydantic response schemas (SupplyChainResponse, ThemeResponse)
+│   ├── graph.py              # Graph schema constants (NodeLabel, RelationshipType)
+│   ├── enums.py              # API-facing enums (Market, MarketIndex)
 │   ├── api/
 │   │   ├── main.py           # Aggregates all route routers into api_router
 │   │   └── routes/           # Endpoint handlers
-│   │       ├── stock.py
-│   │       ├── theme.py
-│   │       ├── product.py
-│   │       ├── commodity.py
-│   │       └── relationship.py
+│   │       ├── company.py
+│   │       └── theme.py
 │   ├── core/
 │   │   ├── config.py         # Settings loaded from .env (pydantic-settings)
 │   │   ├── db.py             # Neo4j async driver (singleton)
