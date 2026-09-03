@@ -2,7 +2,7 @@
 
 REST API Server for financial knowledge graph which is created by triplet extraction pipeline in `finngraph-etl` repository.
 
-Supports only `GET` methods - used exclusively in the knowledge graph explorer.
+Supports only READ-ONLY `GET` methods - used exclusively in the knowledge graph explorer.
 
 ## Project Overview
 
