@@ -172,33 +172,43 @@ _AFFIRMED = "(polarity IS NULL OR polarity = 'affirmed')"
 
 
 async def fetch_root_companies(conn: AsyncConnection, rep_news_id: int) -> list[dict]:
-    """뉴스(클러스터) 관계의 subject 당사자 행.
+    """뉴스(클러스터) 관계의 subject 당사자 행 — 상장 국내 기업만.
 
-    상장 필터·RootCompany 변환은 build_plan 소관(§4.1). 극성은 거르지 않는다 —
-    해지·부인 뉴스라도 당사자는 그 기업들이다. 티커는 원장 code → 활성
-    보통주(stocks) → companies.ticker 순으로 해석한다.
+    subject_code(티커)로 찾는다. 이름 조인은 쓰지 않는다 — companies.name 은
+    유니크가 아니라 동명 비상장사가 한 이름에 열 몇 행씩 붙고, 당사자 하나가
+    루트 기업 여러 개로 불어난다.
+
+    티커가 사는 곳이 두 군데라 양쪽으로 해석한다: companies.ticker 와
+    stocks.ticker(활성 보통주). 한쪽만 보면 놓치는 기업이 있다 — 원장 코드 중
+    일부는 stocks 에 없고, companies.ticker 가 비어 stocks 에만 있는 적재분도
+    있다. 두 경로가 같은 기업을 짚으면 UNION 이 접는다.
     """
 
     return await _fetch_all(
         conn,
         """
-        WITH mention AS (
-            SELECT rs.subject_name AS name, rs.subject_code AS code
+        WITH parties AS (
+            SELECT DISTINCT rs.subject_code AS ticker
             FROM relation_sources rs
             JOIN news n ON n.id = rs.news_id
             WHERE COALESCE(n.cluster_rep_news_id, n.id) = %(rep_news_id)s
+              AND rs.subject_code IS NOT NULL
         ),
-        parties AS (
-            SELECT name, max(code) AS code FROM mention GROUP BY name
+        resolved AS (
+            SELECT p.ticker, c.id AS company_id
+            FROM parties p
+            JOIN companies c ON c.ticker = p.ticker AND c.delisted_at IS NULL
+            UNION
+            SELECT p.ticker, s.company_id
+            FROM parties p
+            JOIN stocks s ON s.ticker = p.ticker
+                         AND s.is_active AND NOT s.preferred_stock
         )
-        SELECT c.id AS company_id, p.name,
-               COALESCE(p.code, s.ticker, c.ticker) AS ticker, c.description
-        FROM parties p
-        LEFT JOIN companies c ON c.name = p.name
-        LEFT JOIN LATERAL (SELECT ticker FROM stocks
-                           WHERE company_id = c.id AND is_active AND NOT preferred_stock
-                           ORDER BY id LIMIT 1) s ON true
-        ORDER BY p.name
+        SELECT DISTINCT c.id AS company_id, c.name, r.ticker, c.description
+        FROM resolved r
+        JOIN companies c ON c.id = r.company_id
+        WHERE c.is_listed AND c.delisted_at IS NULL
+        ORDER BY c.name
         """,
         {"rep_news_id": rep_news_id},
     )
@@ -234,7 +244,7 @@ async def fetch_edge_evidence(
 
 
 async def fetch_financial_history(
-    conn: AsyncConnection, company_id: int, limit: int = 4
+    conn: AsyncConnection, company_id: int, limit: int = 5
 ) -> list[dict]:
     """연결(CFS) 연간 재무 이력 — 최신 회계연도부터, 부채비율 파생."""
 
