@@ -10,7 +10,7 @@ from beneficiary.agent.prompts.planner import PLANNER_SYSTEM
 from beneficiary.agent.prompts.supply_filter import SUPPLY_FILTER_SYSTEM
 from beneficiary.agent.prompts.theme_filter import THEME_FILTER_SYSTEM
 
-PROMPT_VERSION = "c7"
+PROMPT_VERSION = "c8"
 
 DISCLAIMER = (
     "본 분석은 수집된 공시·뉴스·재무 데이터에 기반한 정보 제공 목적이며, "

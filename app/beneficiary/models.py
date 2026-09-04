@@ -231,8 +231,11 @@ class EvaluatorInsight(BaseModel):
     )
     confidence: Literal["high", "medium", "low"]
     rationale: str = Field(
-        description="사용자가 그대로 읽는 한국어 4~5문장. 근거 id([eNN])를 쓰지 말고 "
-                    "근거의 내용(품목명·공시 날짜·수치)을 문장에 녹여 쓴다."
+        description="사용자가 그대로 읽는 한국어 4~5문장, 「~입니다/~합니다」체의 이어지는 "
+                    "한 문단. 사건이 만든 수요가 이 기업에 닿는 경로를 이 기업에 맞게 다시 "
+                    "쓴 문장으로 시작하고(가설 원문 복사 금지), 근거의 내용(품목명·공시 "
+                    "날짜·수치)과 재무·밸류에이션을 그 문단 안에서 이어 쓴다. 근거 "
+                    "id([eNN])·순위 언급·파이프라인 용어는 쓰지 않는다."
     )
     evidence_ids: list[str] = Field(
         default=[],
@@ -240,8 +243,9 @@ class EvaluatorInsight(BaseModel):
                     "응답의 근거 목록이 이 값으로 만들어진다."
     )
     caveats: str = Field(
-        description="사용자가 그대로 읽는 한국어 4~5문장의 한계·유보. 투자 판단에 필요한 "
-                    "정보만 쓴다 — 파이프라인 내부 사정은 쓰지 않는다."
+        description="사용자가 그대로 읽는 한국어 4~5문장의 한계·유보, 「~입니다/~합니다」체의 "
+                    "이어지는 한 문단. 투자 판단에 필요한 정보만 쓴다 — 파이프라인 내부 "
+                    "사정과 순위는 쓰지 않는다."
     )
 
 
@@ -249,9 +253,10 @@ class EvaluatorOutput(BaseModel):
     """심사 결과 전체 — event_interpretation 은 응답의 서두로 그대로 노출된다."""
 
     event_interpretation: str = Field(
-        description="사용자가 그대로 읽는 한국어 2~3문장의 서두. 사건이 만든 수요가 "
-                    "무엇이고 추천 기업들이 그 수요의 어디에 있는지를 쓴다. 탐색 전에 "
-                    "쓰인 [사건 계획]의 요약을 되풀이하지 않는다. 종목명은 넣지 않는다."
+        description="사용자가 그대로 읽는 한국어 2~3문장의 서두, 「~입니다/~합니다」체. "
+                    "사건이 만든 수요가 무엇이고 추천 기업들이 그 수요의 어디에 있는지를 "
+                    "쓴다. 탐색 전에 쓰인 [사건 계획]의 요약을 되풀이하지 않는다. "
+                    "종목명은 넣지 않는다."
     )
     insights: list[EvaluatorInsight] = []
     no_impact_ids: list[str] = []

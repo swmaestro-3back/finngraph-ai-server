@@ -150,7 +150,7 @@ async def test_not_positive_returns_200_with_empty_items(seed, monkeypatch):  # 
 
     assert response.status == "not_positive"
     assert response.items == []
-    assert response.prompt_version == "c7"
+    assert response.prompt_version == "c8"
 
 
 @pytest_asyncio.fixture
