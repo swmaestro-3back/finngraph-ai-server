@@ -8,12 +8,15 @@ Supports only READ-ONLY `GET` methods - used exclusively in the knowledge graph 
 
 Finngraph AI Server exposes a **financial knowledge graph** stored in Neo4j over a REST API.
 
-The graph has exactly two node labels and two relationship types:
+The API covers three node labels and five relationship types:
 
 - `(:Company)` — KOSPI / KOSDAQ listed companies
 - `(:Theme)` — investment themes
+- `(:Event)` — news clusters (title, keywords, member news ids, publish window)
 - `(:Company)-[:SUPPLIES_TO]->(:Company)` — supply chain, with news / disclosure provenance
+- `(:Company)-[:ACQUIRES]->(:Company)`, `(:Company)-[:INVESTS_IN]->(:Company)` — same provenance properties as `SUPPLIES_TO`
 - `(:Company)-[:BELONGS_TO]->(:Theme)` — theme membership, with a `reason`
+- `(:Company)-[:HAS_EVENT]->(:Event)` — a company mentioned in an event (no properties)
 
 Each read endpoint returns the nodes and relationships it covers, which a client can render as an
 interactive graph. Relationship provenance (source news and disclosures) is inlined in the
@@ -27,7 +30,7 @@ finngraph-ai-server/
 │   ├── main.py               # FastAPI app entrypoint (lifespan, router mounting)
 │   ├── repository.py         # Neo4j READ 계층 (Cypher 정의 + 실행, 스키마 변환 위임)
 │   ├── mappers.py            # neo4j Record/Node/Relationship → 응답 스키마 변환
-│   ├── schemas.py            # Pydantic response schemas (SupplyChainResponse, ThemeResponse)
+│   ├── schemas.py            # Pydantic response schemas (CompanyResponse, SupplyChainResponse, CompanyEventsResponse, ThemeResponse)
 │   ├── graph.py              # Graph schema constants (NodeLabel, RelationshipType)
 │   ├── enums.py              # API-facing enums (Market, MarketIndex)
 │   ├── api/
