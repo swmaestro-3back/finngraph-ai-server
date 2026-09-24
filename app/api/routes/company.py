@@ -4,7 +4,12 @@ from fastapi import APIRouter, HTTPException, Query
 
 import repository
 from enums import Market, MarketIndex
-from schemas import CompanyEventsResponse, CompanyResponse, SupplyChainResponse
+from schemas import (
+    CompanyEventsResponse,
+    CompanyResponse,
+    CompanyThemesResponse,
+    SupplyChainResponse,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["Companies"])
 logger = logging.getLogger(__name__)
@@ -12,7 +17,10 @@ logger = logging.getLogger(__name__)
 
 @router.get("/companies/{ticker}", response_model=CompanyResponse)
 async def get_company(ticker: str) -> CompanyResponse:
-    """특정 기업과 1홉 관계에 있는 모든 간선과 연결된 노드(기업·테마·이벤트)를 조회한다."""
+    """특정 기업과 1홉 관계에 있는 기업·이벤트 노드와 그 간선을 조회한다.
+
+    테마(BELONGS_TO)는 제외하며, 테마는 /companies/{ticker}/themes 로 조회한다.
+    """
     company = await repository.get_company(ticker)
     if company is None:
         logger.info("Company not found: %s", ticker)
@@ -36,6 +44,16 @@ async def get_company_supplychain(
         logger.info("Company not found: %s", ticker)
         raise HTTPException(status_code=404, detail=f"Company not found: {ticker}")
     return supplychain
+
+
+@router.get("/companies/{ticker}/themes", response_model=CompanyThemesResponse)
+async def get_company_themes(ticker: str) -> CompanyThemesResponse:
+    """특정 기업이 속한 테마와 BELONGS_TO 간선을 조회한다."""
+    themes = await repository.get_company_themes(ticker)
+    if themes is None:
+        logger.info("Company not found: %s", ticker)
+        raise HTTPException(status_code=404, detail=f"Company not found: {ticker}")
+    return themes
 
 
 @router.get("/companies/{ticker}/events", response_model=CompanyEventsResponse)
