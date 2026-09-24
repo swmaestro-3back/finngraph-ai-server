@@ -11,6 +11,7 @@ from schemas import (
     CompanyEventsResponse,
     CompanyNode,
     CompanyResponse,
+    CompanyThemesResponse,
     DisclosureMention,
     EventNode,
     HasEventRelationship,
@@ -159,6 +160,19 @@ def to_theme_response(record: Record) -> ThemeResponse:
     )
 
 
+def to_company_themes_response(record: Record) -> CompanyThemesResponse:
+    """RETURN c AS company, themes, relationships 레코드를 응답으로 조립한다.
+
+    themes 는 임베딩을 뺀 맵, relationships 는 응답 필드만 담은 맵 목록이다.
+    속한 테마가 없으면 두 목록 모두 비어 있다.
+    """
+    return CompanyThemesResponse(
+        company=build_company(record["company"]),
+        themes=[build_theme(theme) for theme in record["themes"]],
+        relationships=[BelongsToRelationship(**rel) for rel in record["relationships"]],
+    )
+
+
 def to_company_events_response(record: Record) -> CompanyEventsResponse:
     """RETURN c AS center, collect(path) AS paths 형태의 레코드를 응답으로 조립한다.
 
@@ -194,10 +208,10 @@ def to_company_events_response(record: Record) -> CompanyEventsResponse:
 
 
 def to_company_response(record: Record) -> CompanyResponse:
-    """RETURN c AS center, neighbors, themes, relationships, belongs_to 레코드를 응답으로 조립한다.
+    """RETURN c AS center, neighbors, relationships 레코드를 응답으로 조립한다.
 
     neighbors 는 Theme 을 제외한 이웃 노드로, 라벨로 분기해 companies / events 에 나눠 담는다.
-    themes 와 belongs_to 는 임베딩을 뺀 맵 목록, relationships 는 BELONGS_TO 를 제외한 간선 객체 목록이다.
+    relationships 는 BELONGS_TO 를 제외한 간선 객체 목록이다.
     """
     center: Node = record["center"]
 
@@ -208,16 +222,12 @@ def to_company_response(record: Record) -> CompanyResponse:
             events.append(build_event(node))
         else:
             companies.append(build_company(node))
-    themes = [build_theme(theme) for theme in record["themes"]]
 
-    relationships: list[SupplyRelationship | BelongsToRelationship | HasEventRelationship] = []
+    relationships: list[SupplyRelationship | HasEventRelationship] = []
     for rel in record["relationships"]:
         if rel.type == RelationshipType.HAS_EVENT:
             relationships.append(build_has_event(rel))
         else:
             relationships.append(build_supply(rel))
-    relationships.extend(BelongsToRelationship(**rel) for rel in record["belongs_to"])
 
-    return CompanyResponse(
-        companies=companies, themes=themes, events=events, relationships=relationships
-    )
+    return CompanyResponse(companies=companies, events=events, relationships=relationships)

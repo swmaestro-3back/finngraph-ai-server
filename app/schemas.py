@@ -111,12 +111,36 @@ class CompanyEventsResponse(BaseModel):
     relationships: list[HasEventRelationship] = Field(default_factory=list)
 
 
+class CompanyThemesResponse(BaseModel):
+    company: CompanyNode
+    themes: list[ThemeNode] = Field(default_factory=list, description="해당 기업이 속한 테마")
+    relationships: list[BelongsToRelationship] = Field(default_factory=list)
+
+
 class CompanyResponse(BaseModel):
     companies: list[CompanyNode] = Field(
         default_factory=list, description="중심 기업과 1홉 이웃 기업"
     )
-    themes: list[ThemeNode] = Field(default_factory=list, description="기업이 속한 테마")
     events: list[EventNode] = Field(default_factory=list, description="기업이 언급된 이벤트")
-    relationships: list[SupplyRelationship | BelongsToRelationship | HasEventRelationship] = Field(
-        default_factory=list, description="중심 기업에 붙은 모든 간선. type 으로 구분한다."
+    relationships: list[SupplyRelationship | HasEventRelationship] = Field(
+        default_factory=list,
+        description="중심 기업에 붙은 간선 중 BELONGS_TO 를 제외한 전부. type 으로 구분한다.",
+    )
+
+
+class NewsGraphResponse(BaseModel):
+    """뉴스 한 건을 근거로 추출된 기업 간 관계(시드)와 hop 확장 결과. 테마·이벤트는 담지 않는다."""
+
+    companies: list[CompanyNode] = Field(
+        default_factory=list, description="시드 관계의 양끝 기업과 확장으로 붙은 기업"
+    )
+    relationships: list[SupplyRelationship] = Field(default_factory=list)
+    seed_relationship_ids: list[str] = Field(
+        default_factory=list, description="이 뉴스를 근거로 가진 관계 id — 나머지는 홉 확장으로 딸려온 것"
+    )
+    seed_company_ids: list[str] = Field(
+        default_factory=list, description="시드 관계의 양끝 기업 id — 기사에 등장한 기업"
+    )
+    truncated: bool = Field(
+        default=False, description="전체 노드 상한에 걸려 확장 이웃을 일부 버렸는가"
     )
