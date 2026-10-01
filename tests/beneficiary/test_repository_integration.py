@@ -34,7 +34,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
 from beneficiary import repository
-from core import neo4j_client
+from core import neo4j_database
 from core.config import settings
 
 pytestmark = pytest.mark.integration
@@ -134,8 +134,8 @@ async def seed(conn):
 
     theme1, theme2 = f"테마1-{uid}", f"테마2-{uid}"
     ids["theme1"], ids["theme2"] = theme1, theme2
-    await neo4j_client.connect()
-    await neo4j_client.execute(
+    neo4j_database.init_driver()
+    await neo4j_database.execute(
         """
 UNWIND $rows AS row
 MERGE (c:Company {name: row.name})
@@ -159,7 +159,7 @@ SET c.ticker = row.ticker, c.company_id = row.cid,
              "market": "KOSDAQ", "listed": False},
         ]},
     )
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         """
 UNWIND $rows AS row
 MATCH (s:Company {name: row.s}), (o:Company {name: row.o})
@@ -177,13 +177,13 @@ SET r.disclosure_count = row.dc, r.news_mention_count = row.nc,
              "di": ["HBM2"], "ni": ["DDR5"]},
         ]},
     )
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         """
 MATCH (a:Company {name: $a}), (b:Company {name: $b}) MERGE (a)-[:INVESTS_IN]->(b)
 """,
         {"a": names["root"], "b": names["subsid"]},
     )
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         """
 UNWIND $rows AS row
 MERGE (t:Theme {name: row.theme}) SET t.description = row.desc
@@ -207,15 +207,15 @@ MERGE (c)-[b:BELONGS_TO]->(t) SET b.reason = member.reason
 
     yield ids
 
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         "MATCH (c:Company) WHERE c.name IN $names DETACH DELETE c",
         {"names": [*names.values(), f"비상장공급-{uid}", f"상폐공급-{uid}"]},
     )
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         "MATCH (t:Theme) WHERE t.name IN $names DETACH DELETE t",
         {"names": [theme1, theme2]},
     )
-    await neo4j_client.close()
+    await neo4j_database.close()
     async with conn.cursor() as cur:
         await cur.execute("DELETE FROM relation_sources WHERE subject_name = ANY(%s)",
                           ([names["root"], names["supplier"]],))
@@ -294,7 +294,7 @@ async def two_reason_vectors(seed):
     text_root = f"초고압 변압기 및 전력기기 전문 제조 {seed['uid']}"
     text_rival = f"태양광 인버터 및 전력변환장치 전문 제조 {seed['uid']}"
     vector_root, vector_rival = await embed.embed_queries([text_root, text_rival])
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         """
 MATCH (c:Company {name: $name})-[b:BELONGS_TO]->(t:Theme {name: $theme})
 SET b.reason = $reason, b.reason_embedding = $embedding
@@ -302,7 +302,7 @@ SET b.reason = $reason, b.reason_embedding = $embedding
         {"name": seed["root_name"], "theme": seed["theme1"],
          "reason": text_root, "embedding": vector_root},
     )
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         """
 MATCH (c:Company {name: $name})-[b:BELONGS_TO]->(t:Theme {name: $theme})
 SET b.reason = $reason, b.reason_embedding = $embedding
@@ -350,7 +350,7 @@ async def scenario_reason_vector(seed):
 
     reason_text = f"초고압 변압기 및 전력기기 전문 제조 {seed['uid']}"
     vector = (await embed.embed_queries([reason_text]))[0]
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         """
 MATCH (c:Company {name: $name})-[b:BELONGS_TO]->(t:Theme {name: $theme})
 SET b.reason = $reason, b.reason_embedding = $embedding

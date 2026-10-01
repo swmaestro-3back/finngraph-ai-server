@@ -37,4 +37,5 @@ htmlcov/
 
 # Claude
 .claude
+.bkit/
 .superpowers

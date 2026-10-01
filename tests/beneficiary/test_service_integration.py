@@ -22,7 +22,7 @@ from beneficiary.models import (
     ScenarioProbe,
 )
 from beneficiary.agent.utils import embed, llm
-from core import neo4j_client, postgres_client
+from core import neo4j_database, postgres_client
 
 # 데이터 계층 테스트의 시드 픽스처 재사용 (PG + Neo4j, uid 유일화·정리 포함)
 from tests.beneficiary.test_repository_integration import conn, seed  # noqa: F401
@@ -166,7 +166,7 @@ async def theme_reason_vector(seed):  # noqa: F811
 
     reason_text = f"초고압 변압기 및 전력기기 전문 제조 {seed['uid']}"
     vector = (await embed.embed_queries([reason_text]))[0]
-    await neo4j_client.execute(
+    await neo4j_database.execute(
         """
 MATCH (c:Company {name: $name})-[b:BELONGS_TO]->(t:Theme {name: $theme})
 SET b.reason = $reason, b.reason_embedding = $embedding

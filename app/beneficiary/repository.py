@@ -21,7 +21,7 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
 from beneficiary.models import RelationLine
-from core import MARKETS, NodeLabel, RelationshipType, neo4j_client
+from core import MARKETS, NodeLabel, RelationshipType, neo4j_database
 from core.config import settings
 
 
@@ -107,7 +107,7 @@ RETURN n.ticker AS ticker, n.name AS name, n.company_id AS company_id,
        coalesce(r.news_items, [])         AS news_items,
        r.last_mentioned_at                AS last_mentioned_at
 """)
-    records = await neo4j_client.execute(
+    records = await neo4j_database.execute(
         query,
         {
             "root_name": root_name,
@@ -153,7 +153,7 @@ RETURN c.ticker AS ticker, c.name AS name, c.company_id AS company_id,
 ORDER BY score DESC
 LIMIT $limit
 """)
-    records = await neo4j_client.execute(query, {
+    records = await neo4j_database.execute(query, {
         "index_name": settings.neo4j_reason_vector_index,
         "over_fetch": over_fetch,
         "query_vector": query_vector,

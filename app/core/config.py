@@ -4,11 +4,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """
-    pydantic-settings로 .env를 읽어 타입 검증된 설정 객체를 만든다.
-    환경변수가 필요한 코드는 os.getenv가 아니라 이 settings 인스턴스를 import해서 쓴다.
-    """
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -37,6 +32,7 @@ class Settings(BaseSettings):
     # theme 트랙의 reason 벡터 검색용 — finngraph-etl 이 reason_embedding 을 만들 때
     # 쓴 모델과 반드시 같아야 한다(pipelines/common/config.py). 다르면 벡터가 비교 불가능하다.
     bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
+    bedrock_hypothesis_model: str | None = None
 
     # === LangSmith (LLM·워크플로우 트레이싱) ===
     langsmith_tracing: bool = False

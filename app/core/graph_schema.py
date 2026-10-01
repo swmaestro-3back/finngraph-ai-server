@@ -1,8 +1,7 @@
 """Neo4j 그래프 스키마 어휘 — 라벨·관계 타입·시장 구분.
 
-두 기능(knowledge_graph 조회, beneficiary 에이전트)이 같은 그래프를 읽으므로
-라벨 어휘는 어느 한 기능의 소유가 아니라 공유 인프라다 — 그래서 둘 다 이미
-의존하는 core 에 둔다(기능 패키지끼리는 서로를 모른다).
+beneficiary 에이전트가 쓴다. 그래프 조회 API 는 app/graph.py 의 어휘를 따로 쓰며,
+두 정의는 아직 통합되지 않았다(KOSPI/KOSDAQ 라벨·MARKETS 는 여기에만 있다).
 
 Cypher 에는 f-string 보간으로 들어간다 — StrEnum 이라 그대로 문자열이 되고,
 enum 상수라 주입 위험이 없다(사용자 입력은 전부 파라미터로 나간다).
