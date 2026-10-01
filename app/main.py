@@ -1,7 +1,8 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from api.main import api_router
 from core import neo4j_database, postgres_client, setup_logging
@@ -24,4 +25,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="FinnGraph AI API Server", lifespan=lifespan)
+
+
+# ALB 타깃그룹 헬스체크 경로. Neo4j 가 응답하지 않으면 503 을 돌려 트래픽에서 빠진다.
+@app.get("/health", include_in_schema=False)
+async def health():
+    try:
+        await asyncio.wait_for(neo4j_database.execute("RETURN 1 AS ok"), timeout=5)
+    except Exception:
+        logger.warning("Neo4j health check failed")
+        raise HTTPException(status_code=503, detail="Database unavailable") from None
+    return {"status": "UP"}
+
+
 app.include_router(api_router)
