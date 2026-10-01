@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/v1", tags=["Themes"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/themes/{name}", response_model=ThemeResponse)
+@router.get("/themes/{name:path}", response_model=ThemeResponse)
 async def get_theme(name: str) -> ThemeResponse:
     """특정 테마에 대한 정보와 그 테마에 속한 기업(테마주)들을 조회한다."""
     theme = await repository.get_theme(name)
