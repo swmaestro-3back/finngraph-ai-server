@@ -20,7 +20,8 @@ htmlcov/
 
 # Build / runtime meta (not needed in image)
 Dockerfile
-docker-compose.yml
+compose.yaml
+deploy/
 .dockerignore
 .python-version
 
