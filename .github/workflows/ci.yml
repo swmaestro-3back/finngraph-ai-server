@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: 의존성 설치
+        run: uv sync --frozen
+
+      - name: 테스트
+        run: uv run pytest -m "not integration"
+
+  deliver:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    permissions:
+      contents: read
+      id-token: write
+    uses: swmaestro-3back/github-actions/.github/workflows/docker.delivery.yaml@main
+    with:
+      image_name: finngraph/ai-server
+    secrets:
+      oidc_role_arn: ${{ secrets.OIDC_ROLE_ARN }}
+
+  deploy:
+    needs: deliver
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: AWS 자격 증명 설정
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+
+      - name: 배포
+        uses: swmaestro-3back/github-actions/actions/ssm-deploy@main
+        with:
+          instance_id: ${{ secrets.DEPLOY_INSTANCE_ID }}
+          compose_dir: /home/ubuntu/finngraph-ai
+          compose_file: compose.yaml
+          compose_source: deploy/dev/compose.yaml
+          service: api
+          image_env_var: AI_IMAGE
+          image_name: finngraph/ai-server
+          image_digest: ${{ needs.deliver.outputs.image_digest }}
+          health_url: http://127.0.0.1:8000/health
