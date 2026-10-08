@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from mappers import build_company, build_supply
+from repository.neo4j.mappers import build_company, build_supply
 from schemas import CompanyNode, NewsGraphResponse, SupplyRelationship
 
 

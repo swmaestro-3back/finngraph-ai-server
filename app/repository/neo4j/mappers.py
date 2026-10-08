@@ -80,7 +80,7 @@ def build_event(node: Node) -> EventNode:
 # ---------------------------------------------------------------- 간선
 
 
-def _zip_mentions(keys: list[Any], items: list[Any]) -> list[tuple[str, str | None]]:
+def zip_mentions(keys: list[Any], items: list[Any]) -> list[tuple[str, str | None]]:
     """키 리스트를 기준으로 항목을 인덱스 대응시킨다.
 
     ETL 오류로 길이가 어긋나면 남는 항목은 None이 된다. 키 없는 항목은 식별자가 없어 버린다.
@@ -96,13 +96,13 @@ def build_supply(rel: Relationship) -> SupplyRelationship:
 
     news = [
         NewsMention(news_id=news_id, item=item)
-        for news_id, item in _zip_mentions(
+        for news_id, item in zip_mentions(
             properties.get("news_ids") or [], properties.get("news_items") or []
         )
     ]
     disclosures = [
         DisclosureMention(rcept_no=rcept_no, item=item)
-        for rcept_no, item in _zip_mentions(
+        for rcept_no, item in zip_mentions(
             properties.get("disclosure_rcept_nos") or [],
             properties.get("disclosure_items") or [],
         )
@@ -242,16 +242,6 @@ def to_company_response(record: Record) -> CompanyResponse:
 
 
 # ---------------------------------------------------------------- 간선 근거
-
-
-def group_news_items(news_ids: list[Any], news_items: list[Any]) -> dict[str, list[str]]:
-    """간선의 news_ids·news_items 를 기사별 품목 목록으로. 같은 기사가 품목만 달리 여러 번 실려 온다."""
-    grouped: dict[str, list[str]] = {}
-    for news_id, item in _zip_mentions(news_ids, news_items):
-        items = grouped.setdefault(news_id, [])
-        if item and item not in items:
-            items.append(item)
-    return grouped
 
 
 def to_relationship_evidence(

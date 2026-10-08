@@ -6,6 +6,7 @@ import logging
 import enrich
 from repository import postgres
 import repository
+from core import neo4j_database
 from schemas import CompanyNode, CompanyResponse, EventNode, ThemeNode, ThemeResponse
 
 STOCK = {"price": 263500.0, "change": -1.86, "price_date": "2026-10-08",
@@ -89,7 +90,7 @@ async def test_repository_enriches_company_overview(monkeypatch):
     async def fake_enrich(resp):
         seen.append(resp)
 
-    monkeypatch.setattr(repository.neo4j_database, "execute", execute)
+    monkeypatch.setattr(neo4j_database, "execute", execute)
     monkeypatch.setattr(repository, "enrich_graph", fake_enrich)
 
     resp = await repository.get_company("005930")

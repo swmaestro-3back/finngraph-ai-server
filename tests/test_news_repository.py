@@ -5,6 +5,7 @@ import asyncio
 from typing import Any
 
 import repository
+from core import neo4j_database
 
 
 class FakeNode:
@@ -62,7 +63,7 @@ class FakeExecutor:
 
 def test_hop1_only_runs_seed_query(monkeypatch):
     fake = FakeExecutor([[{"a": A, "r": FakeRel("r1", A, B), "b": B}]])
-    monkeypatch.setattr(repository.neo4j_database, "execute", fake.execute)
+    monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
     res = asyncio.run(repository.get_news_graph("10", hop=1))
 
@@ -83,7 +84,7 @@ def test_hop3_expands_twice_then_closes(monkeypatch):
             [{"r": FakeRel("r4", B, D)}],  # closure: extra relation among gathered companies
         ]
     )
-    monkeypatch.setattr(repository.neo4j_database, "execute", fake.execute)
+    monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
     res = asyncio.run(repository.get_news_graph("10", hop=3))
 
@@ -112,7 +113,7 @@ def test_hop3_expands_twice_then_closes(monkeypatch):
 
 def test_no_seeds_returns_none_without_further_calls(monkeypatch):
     fake = FakeExecutor([[]])
-    monkeypatch.setattr(repository.neo4j_database, "execute", fake.execute)
+    monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
     res = asyncio.run(repository.get_news_graph("10", hop=3))
 
@@ -132,7 +133,7 @@ def test_hop3_stops_expanding_once_cap_hit(monkeypatch):
             [{"r": FakeRel("r4", B, C)}],  # closure
         ]
     )
-    monkeypatch.setattr(repository.neo4j_database, "execute", fake.execute)
+    monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
     res = asyncio.run(repository.get_news_graph("10", hop=3))
 

@@ -11,7 +11,8 @@ from repository import postgres
 import repository
 from api.routes import relationship
 from fake_pg import FakeConn
-from mappers import group_news_items
+from core import neo4j_database, postgres_client
+from repository.neo4j.relationship import group_news_items
 from schemas import RelationshipEvidenceResponse
 
 
@@ -68,8 +69,8 @@ async def test_repository_builds_evidence(monkeypatch):
     async def disclosure_briefs(conn, rcept_nos):
         return [{"rcept_no": "2026A", "report_nm": "단일판매·공급계약체결", "rcept_dt": "2026-09-03"}]
 
-    monkeypatch.setattr(repository.neo4j_database, "execute", execute)
-    monkeypatch.setattr(repository.postgres_client, "connection", fake_connection)
+    monkeypatch.setattr(neo4j_database, "execute", execute)
+    monkeypatch.setattr(postgres_client, "connection", fake_connection)
     monkeypatch.setattr(postgres, "fetch_news_briefs", news_briefs)
     monkeypatch.setattr(postgres, "fetch_disclosure_briefs", disclosure_briefs)
 
@@ -83,7 +84,7 @@ async def test_repository_builds_evidence(monkeypatch):
 async def test_repository_returns_none_when_relationship_missing(monkeypatch):
     async def execute(query, params):
         return []
-    monkeypatch.setattr(repository.neo4j_database, "execute", execute)
+    monkeypatch.setattr(neo4j_database, "execute", execute)
     assert await repository.get_relationship_evidence("5:abc:99", 20) is None
 
 
@@ -134,7 +135,7 @@ async def test_evidence_waits_for_pool_at_most_a_few_seconds(monkeypatch):
     async def execute(query, params):
         return [{"news_ids": [], "news_items": [], "rcept_nos": [], "disclosure_items": []}]
 
-    monkeypatch.setattr(repository.neo4j_database, "execute", execute)
-    monkeypatch.setattr(repository.postgres_client, "connection", connection)
+    monkeypatch.setattr(neo4j_database, "execute", execute)
+    monkeypatch.setattr(postgres_client, "connection", connection)
     await repository.get_relationship_evidence("5:abc:1", 5)
     assert seen and seen[0] is not None and seen[0] <= 3

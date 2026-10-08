@@ -7,7 +7,7 @@ import psycopg_pool
 
 from repository import postgres as pg_repo
 import repository
-from core import postgres
+from core import neo4j_database, postgres, postgres_client
 
 
 async def test_pool_is_sized_for_concurrent_enrichment(monkeypatch):
@@ -46,8 +46,8 @@ async def test_non_ascii_digits_are_dropped_not_raised(monkeypatch):
     async def connection(timeout=None):
         yield object()
 
-    monkeypatch.setattr(repository.neo4j_database, "execute", execute)
-    monkeypatch.setattr(repository.postgres_client, "connection", connection)
+    monkeypatch.setattr(neo4j_database, "execute", execute)
+    monkeypatch.setattr(postgres_client, "connection", connection)
     monkeypatch.setattr(pg_repo, "fetch_news_briefs", news_briefs)
     monkeypatch.setattr(pg_repo, "fetch_disclosure_briefs", disclosure_briefs)
 

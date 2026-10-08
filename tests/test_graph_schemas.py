@@ -1,7 +1,7 @@
 """노드 스키마 — Neo4j 프로퍼티 이름과 응답 필드가 맞물리는지, 채울 수 없는 필드가 빠졌는지 본다."""
 from __future__ import annotations
 
-from mappers import build_event, build_theme
+from repository.neo4j.mappers import build_event, build_theme
 from schemas import CompanyNode, StockQuote
 
 

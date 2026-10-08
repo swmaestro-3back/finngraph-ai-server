@@ -11,7 +11,8 @@ from repository import postgres
 import repository
 from api.routes import event
 from fake_pg import FakeConn
-from mappers import to_event_detail
+from core import postgres_client
+from repository.neo4j.mappers import to_event_detail
 from schemas import EventDetailResponse
 
 CLUSTER = {
@@ -63,7 +64,7 @@ async def test_repository_get_event_detail(monkeypatch):
         assert tickers == ["000660"]
         return {}
 
-    monkeypatch.setattr(repository.postgres_client, "connection", fake_connection)
+    monkeypatch.setattr(postgres_client, "connection", fake_connection)
     monkeypatch.setattr(postgres, "fetch_event_detail", fetch_detail)
     monkeypatch.setattr(postgres, "fetch_stock_quotes", quotes)
     res = await repository.get_event_detail(9, 20)
