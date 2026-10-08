@@ -143,7 +143,7 @@ uv run pytest -m "not integration"
 ```
 
 통합 테스트까지 포함하려면 finngraph-etl 의 Postgres 가 떠 있어야 한다
-(`integration` 마커가 붙은 `test_rdb_integration.py` 가 실제 DB 를 읽는다). 마커를
+(`integration` 마커가 붙은 `test_postgres_repository_integration.py` 가 실제 DB 를 읽는다). 마커를
 걸지 않은 `uv run pytest` 는 이것까지 같이 돌리므로, DB 가 없으면 실패한다.
 
 ```bash

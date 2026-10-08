@@ -7,7 +7,7 @@ import psycopg
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import rdb
+from repository import postgres
 import repository
 from api.routes import event
 from fake_pg import FakeConn
@@ -23,7 +23,7 @@ CLUSTER = {
 
 async def test_fetch_event_detail_none_when_cluster_missing():
     conn = FakeConn([])
-    assert await rdb.fetch_event_detail(conn, 404, 20) is None
+    assert await postgres.fetch_event_detail(conn, 404, 20) is None
     assert len(conn.calls) == 1
 
 
@@ -34,7 +34,7 @@ async def test_fetch_event_detail_collects_news_total_companies():
         [{"news_id": "11", "title": "t", "url": "u", "original_url": None, "published_at": None}],
         [{"name": "SK하이닉스", "ticker": "000660"}, {"name": "솔리다임", "ticker": None}],
     )
-    detail = await rdb.fetch_event_detail(conn, 9, 20)
+    detail = await postgres.fetch_event_detail(conn, 9, 20)
     assert detail["news_total"] == 3 and len(detail["news"]) == 1
     assert detail["companies"][1] == {"name": "솔리다임", "ticker": None}
     assert len(conn.calls) == 3
@@ -64,8 +64,8 @@ async def test_repository_get_event_detail(monkeypatch):
         return {}
 
     monkeypatch.setattr(repository.postgres_client, "connection", fake_connection)
-    monkeypatch.setattr(rdb, "fetch_event_detail", fetch_detail)
-    monkeypatch.setattr(rdb, "fetch_stock_quotes", quotes)
+    monkeypatch.setattr(postgres, "fetch_event_detail", fetch_detail)
+    monkeypatch.setattr(postgres, "fetch_stock_quotes", quotes)
     res = await repository.get_event_detail(9, 20)
     assert res.cluster_id == 9 and res.companies[0].quote is None
 

@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 import psycopg_pool
 
-import rdb
+from repository import postgres as pg_repo
 import repository
 from core import postgres
 
@@ -48,8 +48,8 @@ async def test_non_ascii_digits_are_dropped_not_raised(monkeypatch):
 
     monkeypatch.setattr(repository.neo4j_database, "execute", execute)
     monkeypatch.setattr(repository.postgres_client, "connection", connection)
-    monkeypatch.setattr(rdb, "fetch_news_briefs", news_briefs)
-    monkeypatch.setattr(rdb, "fetch_disclosure_briefs", disclosure_briefs)
+    monkeypatch.setattr(pg_repo, "fetch_news_briefs", news_briefs)
+    monkeypatch.setattr(pg_repo, "fetch_disclosure_briefs", disclosure_briefs)
 
     res = await repository.get_relationship_evidence("5:abc:1", 5)
     assert res is not None

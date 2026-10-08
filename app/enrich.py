@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import Any, Awaitable, Callable
 
-import rdb
+from repository import postgres
 from core import postgres_client
 from schemas import CompanyNode, EventNode, StockQuote, ThemeNode, ThemeQuote
 
@@ -56,9 +56,9 @@ async def enrich_graph(response: Any) -> None:
     cluster_ids = sorted({e.cluster_id for e in events if e.cluster_id is not None})
 
     stock_quotes, theme_quotes, event_meta = await asyncio.gather(
-        _safe(rdb.fetch_stock_quotes, tickers),
-        _safe(rdb.fetch_theme_quotes, theme_ids),
-        _safe(rdb.fetch_event_meta, cluster_ids),
+        _safe(postgres.fetch_stock_quotes, tickers),
+        _safe(postgres.fetch_theme_quotes, theme_ids),
+        _safe(postgres.fetch_event_meta, cluster_ids),
     )
 
     for company in companies:

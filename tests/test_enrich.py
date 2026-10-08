@@ -1,10 +1,10 @@
-"""enrich — rdb 조회를 가짜로 바꿔 id 수집·채우기·실패 격리만 본다."""
+"""enrich — postgres 조회를 가짜로 바꿔 id 수집·채우기·실패 격리만 본다."""
 from __future__ import annotations
 
 import logging
 
 import enrich
-import rdb
+from repository import postgres
 import repository
 from schemas import CompanyNode, CompanyResponse, EventNode, ThemeNode, ThemeResponse
 
@@ -27,9 +27,9 @@ def fake_query(results: dict, calls: list | None = None, fail: set | None = None
 async def test_fills_company_theme_event_from_postgres(monkeypatch):
     calls: list = []
     monkeypatch.setattr(enrich, "_query", fake_query({
-        rdb.fetch_stock_quotes: {"005930": STOCK},
-        rdb.fetch_theme_quotes: {1: THEME},
-        rdb.fetch_event_meta: {9: META},
+        postgres.fetch_stock_quotes: {"005930": STOCK},
+        postgres.fetch_theme_quotes: {1: THEME},
+        postgres.fetch_event_meta: {9: META},
     }, calls))
     resp = CompanyResponse(
         companies=[CompanyNode(id="c1", ticker="005930"), CompanyNode(id="c2", ticker=None)],
@@ -49,8 +49,8 @@ async def test_fills_company_theme_event_from_postgres(monkeypatch):
 
 
 async def test_missing_rows_leave_quote_none(monkeypatch):
-    # rdb 가 값이 하나도 없는 종목(해외 등)을 걸러 보내므로 enrich 에는 그 종목 행이 없다
-    monkeypatch.setattr(enrich, "_query", fake_query({rdb.fetch_stock_quotes: {}}))
+    # repository.postgres 가 값이 하나도 없는 종목(해외 등)을 걸러 보내므로 enrich 에는 그 종목 행이 없다
+    monkeypatch.setattr(enrich, "_query", fake_query({postgres.fetch_stock_quotes: {}}))
     resp = CompanyResponse(companies=[CompanyNode(id="c1", ticker="AAPL")])
     await enrich.enrich_graph(resp)
     assert resp.companies[0].quote is None
@@ -58,7 +58,7 @@ async def test_missing_rows_leave_quote_none(monkeypatch):
 
 async def test_one_failed_lookup_does_not_block_others(monkeypatch, caplog):
     monkeypatch.setattr(enrich, "_query", fake_query(
-        {rdb.fetch_event_meta: {9: META}}, fail={rdb.fetch_stock_quotes},
+        {postgres.fetch_event_meta: {9: META}}, fail={postgres.fetch_stock_quotes},
     ))
     resp = CompanyResponse(
         companies=[CompanyNode(id="c1", ticker="005930")], events=[EventNode(id="e1", cluster_id=9)],
