@@ -15,7 +15,7 @@ from mappers import to_event_detail
 from schemas import EventDetailResponse
 
 CLUSTER = {
-    "cluster_id": 9, "title": "HBM 증설", "keywords": ["hbm"], "member_count": 3,
+    "cluster_id": 9, "title": "HBM 증설", "keywords": ["hbm"],
     "representative_news_id": 11, "first_published_at": "2026-10-01T09:00:00+09:00",
     "last_published_at": "2026-10-02T09:00:00+09:00",
 }

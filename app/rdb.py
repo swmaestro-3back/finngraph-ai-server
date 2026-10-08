@@ -97,8 +97,9 @@ LEFT JOIN LATERAL (
 WHERE t.id = ANY(%(theme_ids)s)
 """
 
+# 건수는 original_size(클러스터 전체 기사 수)다 — member_count 는 승격 상한(NEWS_CLUSTER_PROMOTE_SIZE)에 묶인다.
 _EVENT_META_SQL = """
-SELECT id AS cluster_id, keywords, member_count, representative_news_id
+SELECT id AS cluster_id, keywords, original_size AS news_count, representative_news_id
 FROM news_clusters
 WHERE id = ANY(%(cluster_ids)s)
 """
@@ -176,7 +177,7 @@ async def fetch_disclosure_briefs(conn: AsyncConnection, rcept_nos: list[str]) -
 # ── 이벤트 상세 ──────────────────────────────────────────────────────────────
 
 _EVENT_CLUSTER_SQL = """
-SELECT id AS cluster_id, title, keywords, member_count, representative_news_id,
+SELECT id AS cluster_id, title, keywords, representative_news_id,
        first_published_at, last_published_at
 FROM news_clusters
 WHERE id = %(id)s

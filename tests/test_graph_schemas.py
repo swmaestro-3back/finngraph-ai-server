@@ -34,8 +34,8 @@ def test_build_event_keeps_only_fields_neo4j_or_postgres_can_fill():
     event = build_event(node)
     dumped = event.model_dump()
     assert event.cluster_id == 7
-    assert event.keywords == [] and event.member_count is None
-    for gone in ("news_ids", "companies", "original_size", "titled_at", "synced_at"):
+    assert event.keywords == [] and event.news_count is None
+    for gone in ("news_ids", "companies", "member_count", "original_size", "titled_at", "synced_at"):
         assert gone not in dumped
 
 

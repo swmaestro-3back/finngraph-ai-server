@@ -65,7 +65,10 @@ class EventNode(BaseModel):
     cluster_id: int | None = Field(default=None, description="뉴스 클러스터 id (유니크)")
     title: str | None = None
     keywords: list[str] = Field(default_factory=list)
-    member_count: int | None = Field(default=None, description="클러스터에 남은 뉴스 건수")
+    news_count: int | None = Field(
+        default=None,
+        description="클러스터 전체 기사 수(news_clusters.original_size). member_count 는 승격 상한(3)에 묶여 쓰지 않는다",
+    )
     representative_news_id: int | None = None
     first_published_at: str | None = None
     last_published_at: str | None = None
@@ -223,7 +226,6 @@ class EventDetailResponse(BaseModel):
     cluster_id: int
     title: str | None = None
     keywords: list[str] = Field(default_factory=list)
-    member_count: int | None = None
     representative_news_id: int | None = None
     first_published_at: str | None = None
     last_published_at: str | None = None

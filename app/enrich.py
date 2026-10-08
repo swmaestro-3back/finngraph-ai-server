@@ -73,5 +73,5 @@ async def enrich_graph(response: Any) -> None:
         meta = event_meta.get(event.cluster_id) if event.cluster_id is not None else None
         if meta is not None:
             event.keywords = meta["keywords"] or []
-            event.member_count = meta["member_count"]
+            event.news_count = meta["news_count"]
             event.representative_news_id = meta["representative_news_id"]

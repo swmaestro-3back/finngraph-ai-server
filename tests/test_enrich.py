@@ -11,7 +11,7 @@ from schemas import CompanyNode, CompanyResponse, EventNode, ThemeNode, ThemeRes
 STOCK = {"price": 263500.0, "change": -1.86, "price_date": "2026-10-08",
          "market_cap": 1, "r_1w": -4.01, "r_1m": None, "r_3m": None}
 THEME = {"change": 1.77, "price_date": "2026-10-08", "r_1w": 7.73, "r_1m": 8.51, "r_3m": None, "market_cap": 2}
-META = {"keywords": ["hbm"], "member_count": 3, "representative_news_id": 11}
+META = {"keywords": ["hbm"], "news_count": 40, "representative_news_id": 11}
 
 
 def fake_query(results: dict, calls: list | None = None, fail: set | None = None):
@@ -42,7 +42,7 @@ async def test_fills_company_theme_event_from_postgres(monkeypatch):
 
     assert resp.companies[0].quote.change == -1.86
     assert resp.companies[1].quote is None
-    assert resp.events[0].keywords == ["hbm"] and resp.events[0].member_count == 3
+    assert resp.events[0].keywords == ["hbm"] and resp.events[0].news_count == 40
     assert resp.events[0].representative_news_id == 11
     assert theme_resp.theme.quote.r_1w == 7.73
     assert ("fetch_stock_quotes", ["005930"]) in calls  # ticker 없는 기업은 묻지 않는다
@@ -66,7 +66,7 @@ async def test_one_failed_lookup_does_not_block_others(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         await enrich.enrich_graph(resp)
     assert resp.companies[0].quote is None
-    assert resp.events[0].member_count == 3
+    assert resp.events[0].news_count == 40
     assert "fetch_stock_quotes" in caplog.text
 
 

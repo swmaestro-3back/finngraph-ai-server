@@ -52,7 +52,11 @@ async def test_event_meta(conn):
     cluster_id = await pick(conn, "SELECT id FROM news_clusters LIMIT 1")
     meta = await rdb.fetch_event_meta(conn, [cluster_id])
     assert isinstance(meta[cluster_id]["keywords"], list)
-    assert isinstance(meta[cluster_id]["member_count"], int)
+    # 패널의 "뉴스 N건" — 승격 상한(3)에 묶인 member_count 가 아니라 클러스터 전체 기사 수다
+    async with conn.cursor() as cur:
+        await cur.execute("SELECT count(*) FROM news WHERE cluster_id = %s", (cluster_id,))
+        (total,) = await cur.fetchone()
+    assert meta[cluster_id]["news_count"] == total
 
 
 async def test_news_briefs(conn):

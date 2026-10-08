@@ -47,9 +47,9 @@ async def test_theme_quotes_keyed_by_theme_id():
 
 
 async def test_event_meta_keyed_by_cluster_id():
-    conn = FakeConn([{"cluster_id": 9, "keywords": ["hbm"], "member_count": 3, "representative_news_id": None}])
+    conn = FakeConn([{"cluster_id": 9, "keywords": ["hbm"], "news_count": 40, "representative_news_id": None}])
     assert await rdb.fetch_event_meta(conn, [9]) == {
-        9: {"keywords": ["hbm"], "member_count": 3, "representative_news_id": None}
+        9: {"keywords": ["hbm"], "news_count": 40, "representative_news_id": None}
     }
 
 
