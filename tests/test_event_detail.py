@@ -50,7 +50,7 @@ def test_to_event_detail_attaches_quotes_by_ticker():
 
 
 @asynccontextmanager
-async def fake_connection():
+async def fake_connection(timeout=None):
     yield object()
 
 

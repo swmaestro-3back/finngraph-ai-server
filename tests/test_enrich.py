@@ -93,3 +93,19 @@ async def test_repository_enriches_company_overview(monkeypatch):
 
     resp = await repository.get_company("005930")
     assert seen == [resp]
+
+
+async def test_hung_postgres_does_not_stall_graph(monkeypatch):
+    import asyncio
+    import time
+
+    async def hang(fetch, ids):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(enrich, "_query", hang)
+    monkeypatch.setattr(enrich, "LOOKUP_TIMEOUT", 0.05)
+    resp = CompanyResponse(companies=[CompanyNode(id="c1", ticker="005930")])
+    started = time.monotonic()
+    await enrich.enrich_graph(resp)
+    assert time.monotonic() - started < 1
+    assert resp.companies[0].quote is None

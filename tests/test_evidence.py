@@ -40,7 +40,7 @@ async def test_news_briefs_runs_three_queries_and_skips_empty():
 
 
 @asynccontextmanager
-async def fake_connection():
+async def fake_connection(timeout=None):
     yield object()
 
 
@@ -114,3 +114,20 @@ def test_404_422_503(monkeypatch):
 
     monkeypatch.setattr(repository, "get_relationship_evidence", down)
     assert make_client().get("/api/v1/relationships/1/evidence").status_code == 503
+
+
+async def test_evidence_waits_for_pool_at_most_a_few_seconds(monkeypatch):
+    seen: list = []
+
+    @asynccontextmanager
+    async def connection(timeout=None):
+        seen.append(timeout)
+        yield object()
+
+    async def execute(query, params):
+        return [{"news_ids": [], "news_items": [], "rcept_nos": [], "disclosure_items": []}]
+
+    monkeypatch.setattr(repository.neo4j_database, "execute", execute)
+    monkeypatch.setattr(repository.postgres_client, "connection", connection)
+    await repository.get_relationship_evidence("5:abc:1", 5)
+    assert seen and seen[0] is not None and seen[0] <= 3

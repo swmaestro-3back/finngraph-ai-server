@@ -99,6 +99,9 @@ RETURN c AS center, collect(path) AS paths
 
 # ---------------------------------------------------------------- 간선 근거
 
+# 근거·이벤트 상세가 풀에서 커넥션을 기다리는 상한(초) — 게이트웨이 상한(8초) 전에 503 으로 끝낸다.
+PG_CONNECT_TIMEOUT = 3.0
+
 # 그래프 응답이 준 간선 elementId 로 근거 목록만 꺼낸다 — 제목·날짜는 Postgres 가 갖고 있다.
 _RELATIONSHIP_EVIDENCE_QUERY: LiteralString = """
 MATCH (:Company)-[r:SUPPLIES_TO|ACQUIRES|INVESTS_IN]->(:Company)
@@ -246,7 +249,7 @@ async def get_relationship_evidence(element_id: str, limit: int) -> Relationship
     for rcept_no in record["rcept_nos"] or []:
         disclosure_items.setdefault(str(rcept_no), None)
 
-    async with postgres_client.connection() as conn:
+    async with postgres_client.connection(timeout=PG_CONNECT_TIMEOUT) as conn:
         news_rows, news_total, monthly = await rdb.fetch_news_briefs(conn, news_ids, limit)
         disclosure_rows = await rdb.fetch_disclosure_briefs(conn, list(disclosure_items))
 
@@ -255,7 +258,7 @@ async def get_relationship_evidence(element_id: str, limit: int) -> Relationship
 
 async def get_event_detail(cluster_id: int, limit: int) -> EventDetailResponse | None:
     """이벤트의 키워드·기사·관련 기업(시세 포함). 클러스터가 없으면 None(404)."""
-    async with postgres_client.connection() as conn:
+    async with postgres_client.connection(timeout=PG_CONNECT_TIMEOUT) as conn:
         detail = await rdb.fetch_event_detail(conn, cluster_id, limit)
         if detail is None:
             return None

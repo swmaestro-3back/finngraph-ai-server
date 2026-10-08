@@ -18,17 +18,20 @@ logger = logging.getLogger(__name__)
 
 Fetch = Callable[[Any, list], Awaitable[dict]]
 
+# 조회 하나에 주는 시간(초) — 커넥션 대기와 쿼리를 합친 상한. DB 가 멎어도 그래프는 이 안에 시세 없이 나간다.
+LOOKUP_TIMEOUT = 2.0
+
 
 async def _query(fetch: Fetch, ids: list) -> dict:
     if not ids:
         return {}
-    async with postgres_client.connection() as conn:
+    async with postgres_client.connection(timeout=LOOKUP_TIMEOUT) as conn:
         return await fetch(conn, ids)
 
 
 async def _safe(fetch: Fetch, ids: list) -> dict:
     try:
-        return await _query(fetch, ids)
+        return await asyncio.wait_for(_query(fetch, ids), LOOKUP_TIMEOUT)
     except Exception:
         logger.warning("graph enrichment failed: %s", fetch.__name__, exc_info=True)
         return {}
