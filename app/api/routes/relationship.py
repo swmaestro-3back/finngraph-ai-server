@@ -1,9 +1,10 @@
 import logging
 
 import psycopg
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 import repository
+from api.cache import EVIDENCE_MAX_AGE, cacheable
 from schemas import RelationshipEvidenceResponse
 
 router = APIRouter(prefix="/api/v1", tags=["Relationships"])
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 @router.get("/relationships/{element_id}/evidence", response_model=RelationshipEvidenceResponse)
 async def get_relationship_evidence(
     element_id: str,
+    response: Response,
     limit: int = Query(20, ge=1, le=50, description="돌려줄 최신 기사 수"),
 ) -> RelationshipEvidenceResponse:
     """기업 간 관계(공급·인수·투자)의 근거 기사와 공시.
@@ -27,4 +29,5 @@ async def get_relationship_evidence(
     if evidence is None:
         logger.info("Relationship not found: %s", element_id)
         raise HTTPException(status_code=404, detail=f"Relationship not found: {element_id}")
+    cacheable(response, EVIDENCE_MAX_AGE)
     return evidence
