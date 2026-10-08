@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, LiteralString, cast
 
 from core import neo4j_database
+from enrich import enrich_graph
 from enums import Market, MarketIndex
 from mappers import (
     to_company_events_response,
@@ -131,7 +132,9 @@ async def get_company(ticker: str) -> CompanyResponse | None:
     records = await neo4j_database.execute(_COMPANY_QUERY, {"key": ticker})
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_company_response(records[0])
+    response = to_company_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_company_supplychain(
     ticker: str,
@@ -152,26 +155,34 @@ async def get_company_supplychain(
     records = await neo4j_database.execute(cast(LiteralString, query.format(hop=hop)), params)
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_supplychain_response(records[0])
+    response = to_supplychain_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_theme(name: str) -> ThemeResponse | None:
     records = await neo4j_database.execute(_THEME_QUERY, {"key": name})
     if not records:  # 해당 테마 자체가 없음
         return None
-    return to_theme_response(records[0])
+    response = to_theme_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_company_themes(ticker: str) -> CompanyThemesResponse | None:
     records = await neo4j_database.execute(_COMPANY_THEMES_QUERY, {"key": ticker})
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_company_themes_response(records[0])
+    response = to_company_themes_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_company_events(ticker: str, hop: int = 1) -> CompanyEventsResponse | None:
     query = cast(LiteralString, _COMPANY_EVENTS_QUERY.format(hop=hop))
     records = await neo4j_database.execute(query, {"key": ticker})
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_company_events_response(records[0])
+    response = to_company_events_response(records[0])
+    await enrich_graph(response)
+    return response
 
 
 async def get_news_graph(news_id: str, hop: int = 1) -> NewsGraphResponse | None:
