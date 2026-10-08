@@ -2,6 +2,30 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+
+class StockQuote(BaseModel):
+    """ETL Postgres 에서 읽은 종목 시세 — 최신 일봉 + 최신 밸류에이션 행."""
+
+    price: float | None = Field(default=None, description="최신 일봉 종가")
+    change: float | None = Field(default=None, description="전일 대비 등락률(%)")
+    market_cap: int | None = None
+    r_1w: float | None = Field(default=None, description="1주 수익률(%)")
+    r_1m: float | None = Field(default=None, description="1개월 수익률(%)")
+    r_3m: float | None = Field(default=None, description="3개월 수익률(%)")
+    price_date: str | None = Field(default=None, description="시세 기준 거래일 (YYYY-MM-DD)")
+
+
+class ThemeQuote(BaseModel):
+    """테마 지수(theme_candles_daily) 기준 시세. 시가총액은 소속 종목 최신 시가총액의 합."""
+
+    change: float | None = Field(default=None, description="테마 지수 전일 대비 등락률(%)")
+    market_cap: int | None = None
+    r_1w: float | None = None
+    r_1m: float | None = None
+    r_3m: float | None = None
+    price_date: str | None = None
+
+
 class CompanyNode(BaseModel):
     model_config = ConfigDict(extra="ignore")   # 선언하지 않은 프로퍼티는 버림
 
@@ -16,6 +40,7 @@ class CompanyNode(BaseModel):
     krx100: bool = False
     krx300: bool = False
     kosdaq150: bool = False
+    quote: StockQuote | None = Field(default=None, description="시세 — 그래프 응답에서 Postgres 로 채운다")
 
 
 class ThemeNode(BaseModel):
@@ -24,25 +49,29 @@ class ThemeNode(BaseModel):
     id: str = Field(description="Neo4j element_id")
     name: str | None = None
     description: str | None = None
-    source_theme_id: int | None = None
+    theme_id: int | None = Field(default=None, description="Postgres themes.id (ETL 이 Theme.theme_id 로 적재)")
+    quote: ThemeQuote | None = None
 
 
 class EventNode(BaseModel):
+    """Neo4j :Event 는 cluster_id·title·기간만 갖는다. 키워드·건수·대표 기사는 Postgres news_clusters 에서 채운다.
+
+    기사 목록과 관련 기업은 GET /events/{cluster_id} 가 따로 돌려준다.
+    """
+
     model_config = ConfigDict(extra="ignore")
 
     id: str = Field(description="Neo4j element_id")
     cluster_id: int | None = Field(default=None, description="뉴스 클러스터 id (유니크)")
     title: str | None = None
     keywords: list[str] = Field(default_factory=list)
-    companies: list[str] = Field(default_factory=list, description="이벤트에 언급된 기업명")
-    news_ids: list[int] = Field(default_factory=list, description="클러스터를 구성하는 뉴스 id")
+    news_count: int | None = Field(
+        default=None,
+        description="클러스터 전체 기사 수(news_clusters.original_size). member_count 는 승격 상한(3)에 묶여 쓰지 않는다",
+    )
     representative_news_id: int | None = None
-    member_count: int | None = Field(default=None, description="클러스터에 남은 뉴스 건수")
-    original_size: int | None = Field(default=None, description="정제 전 클러스터 뉴스 건수")
     first_published_at: str | None = None
     last_published_at: str | None = None
-    titled_at: str | None = None
-    synced_at: str | None = None
 
 
 class NewsMention(BaseModel):
@@ -144,3 +173,62 @@ class NewsGraphResponse(BaseModel):
     truncated: bool = Field(
         default=False, description="전체 노드 상한에 걸려 확장 이웃을 일부 버렸는가"
     )
+
+
+class NewsBrief(BaseModel):
+    """목록 한 줄에 필요한 만큼의 기사 정보."""
+
+    news_id: str
+    title: str | None = None
+    url: str | None = None
+    original_url: str | None = None
+    published_at: str | None = None
+
+
+class EvidenceNews(NewsBrief):
+    items: list[str] = Field(default_factory=list, description="이 기사에서 뽑힌 품목 문구")
+
+
+class MonthlyCount(BaseModel):
+    month: str = Field(description="YYYY-MM")
+    count: int
+
+
+class EvidenceDisclosure(BaseModel):
+    rcept_no: str
+    report_nm: str | None = None
+    rcept_dt: str | None = None
+    item: str | None = None
+
+
+class RelationshipEvidenceResponse(BaseModel):
+    """간선 근거 — 최신 기사 limit 건, 기사 전체 건수, 전체 기간 월별 건수, 공시."""
+
+    news: list[EvidenceNews] = Field(default_factory=list, description="최신순")
+    news_total: int = Field(default=0, description="Postgres 에 있는 근거 기사 수")
+    monthly: list[MonthlyCount] = Field(default_factory=list, description="오래된 달부터. 빈 달은 없다")
+    disclosures: list[EvidenceDisclosure] = Field(default_factory=list)
+
+
+class EventCompany(BaseModel):
+    name: str
+    ticker: str | None = None
+    quote: StockQuote | None = None
+
+
+class EventDetailResponse(BaseModel):
+    """이벤트(뉴스 클러스터) 상세 — Postgres news_clusters·news·news_companies 에서 읽는다.
+
+    news 는 관계 분석을 거친(triple_extracted IS NOT NULL) 기사만 최신순 limit 건이다.
+    news_total 은 분석 여부와 무관한 클러스터 전체 기사 수다.
+    """
+
+    cluster_id: int
+    title: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    representative_news_id: int | None = None
+    first_published_at: str | None = None
+    last_published_at: str | None = None
+    news: list[NewsBrief] = Field(default_factory=list)
+    news_total: int = 0
+    companies: list[EventCompany] = Field(default_factory=list)

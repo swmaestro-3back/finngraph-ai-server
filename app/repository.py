@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from typing import Any, LiteralString, cast
 
-from core import neo4j_database
+import rdb
+from core import neo4j_database, postgres_client
+from enrich import enrich_graph
 from enums import Market, MarketIndex
 from mappers import (
+    group_news_items,
     to_company_events_response,
     to_company_response,
     to_company_themes_response,
+    to_event_detail,
+    to_relationship_evidence,
     to_supplychain_response,
     to_theme_response,
 )
@@ -16,7 +21,9 @@ from schemas import (
     CompanyEventsResponse,
     CompanyResponse,
     CompanyThemesResponse,
+    EventDetailResponse,
     NewsGraphResponse,
+    RelationshipEvidenceResponse,
     SupplyChainResponse,
     ThemeResponse,
 )
@@ -90,6 +97,19 @@ OPTIONAL MATCH path = (c)-[:HAS_EVENT*1..{hop}]-()
 RETURN c AS center, collect(path) AS paths
 """
 
+# ---------------------------------------------------------------- 간선 근거
+
+# 근거·이벤트 상세가 풀에서 커넥션을 기다리는 상한(초) — 게이트웨이 상한(8초) 전에 503 으로 끝낸다.
+PG_CONNECT_TIMEOUT = 3.0
+
+# 그래프 응답이 준 간선 elementId 로 근거 목록만 꺼낸다 — 제목·날짜는 Postgres 가 갖고 있다.
+_RELATIONSHIP_EVIDENCE_QUERY: LiteralString = """
+MATCH (:Company)-[r:SUPPLIES_TO|ACQUIRES|INVESTS_IN]->(:Company)
+WHERE elementId(r) = $id
+RETURN r.news_ids AS news_ids, r.news_items AS news_items,
+       r.disclosure_rcept_nos AS rcept_nos, r.disclosure_items AS disclosure_items
+"""
+
 # ---------------------------------------------------------------- 뉴스 그래프
 
 # 이 뉴스를 근거(news_ids)로 가진 기업 간 관계 — 뉴스 그래프의 시드.
@@ -131,7 +151,9 @@ async def get_company(ticker: str) -> CompanyResponse | None:
     records = await neo4j_database.execute(_COMPANY_QUERY, {"key": ticker})
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_company_response(records[0])
+    response = to_company_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_company_supplychain(
     ticker: str,
@@ -152,26 +174,34 @@ async def get_company_supplychain(
     records = await neo4j_database.execute(cast(LiteralString, query.format(hop=hop)), params)
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_supplychain_response(records[0])
+    response = to_supplychain_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_theme(name: str) -> ThemeResponse | None:
     records = await neo4j_database.execute(_THEME_QUERY, {"key": name})
     if not records:  # 해당 테마 자체가 없음
         return None
-    return to_theme_response(records[0])
+    response = to_theme_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_company_themes(ticker: str) -> CompanyThemesResponse | None:
     records = await neo4j_database.execute(_COMPANY_THEMES_QUERY, {"key": ticker})
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_company_themes_response(records[0])
+    response = to_company_themes_response(records[0])
+    await enrich_graph(response)
+    return response
 
 async def get_company_events(ticker: str, hop: int = 1) -> CompanyEventsResponse | None:
     query = cast(LiteralString, _COMPANY_EVENTS_QUERY.format(hop=hop))
     records = await neo4j_database.execute(query, {"key": ticker})
     if not records:  # 기준 기업 자체가 없음
         return None
-    return to_company_events_response(records[0])
+    response = to_company_events_response(records[0])
+    await enrich_graph(response)
+    return response
 
 
 async def get_news_graph(news_id: str, hop: int = 1) -> NewsGraphResponse | None:
@@ -201,3 +231,37 @@ async def get_news_graph(news_id: str, hop: int = 1) -> NewsGraphResponse | None
         acc.add_closure(records)
 
     return acc.to_response()
+
+
+async def get_relationship_evidence(element_id: str, limit: int) -> RelationshipEvidenceResponse | None:
+    """간선의 근거 기사(최신 limit 건·전체 건수·월별 건수)와 공시. 간선이 없으면 None(404)."""
+    records = await neo4j_database.execute(_RELATIONSHIP_EVIDENCE_QUERY, {"id": element_id})
+    if not records:
+        return None
+    record = records[0]
+
+    items = group_news_items(record["news_ids"] or [], record["news_items"] or [])
+    # news_ids 는 적재 경로에 따라 문자열/정수가 섞인다 — 숫자가 아닌 id 는 news.id 와 맞출 수 없어 버린다
+    news_ids = [int(news_id) for news_id in items if news_id.isdigit()]
+    disclosure_items: dict[str, str | None] = {}
+    for rcept_no, item in zip(record["rcept_nos"] or [], record["disclosure_items"] or []):
+        disclosure_items.setdefault(str(rcept_no), item)
+    for rcept_no in record["rcept_nos"] or []:
+        disclosure_items.setdefault(str(rcept_no), None)
+
+    async with postgres_client.connection(timeout=PG_CONNECT_TIMEOUT) as conn:
+        news_rows, news_total, monthly = await rdb.fetch_news_briefs(conn, news_ids, limit)
+        disclosure_rows = await rdb.fetch_disclosure_briefs(conn, list(disclosure_items))
+
+    return to_relationship_evidence(items, news_rows, news_total, monthly, disclosure_rows, disclosure_items)
+
+
+async def get_event_detail(cluster_id: int, limit: int) -> EventDetailResponse | None:
+    """이벤트의 키워드·기사·관련 기업(시세 포함). 클러스터가 없으면 None(404)."""
+    async with postgres_client.connection(timeout=PG_CONNECT_TIMEOUT) as conn:
+        detail = await rdb.fetch_event_detail(conn, cluster_id, limit)
+        if detail is None:
+            return None
+        tickers = sorted({row["ticker"] for row in detail["companies"] if row["ticker"]})
+        quotes = await rdb.fetch_stock_quotes(conn, tickers)
+    return to_event_detail(detail, quotes)

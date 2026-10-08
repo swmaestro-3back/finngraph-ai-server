@@ -29,11 +29,15 @@ class PostgresClient:
             await self._pool.close()
             logger.info("Postgres pool closed")
 
-    def connection(self):
-        """`async with postgres_client.connection() as conn:` 로 쓴다."""
+    def connection(self, timeout: float | None = None):
+        """`async with postgres_client.connection() as conn:` 로 쓴다.
+
+        timeout 은 풀에서 커넥션을 기다리는 상한(초)이다. None 이면 풀 기본값(30초) —
+        게이트웨이 상한(8초) 안에 답해야 하는 요청은 짧게 넘긴다. 넘으면 PoolTimeout(psycopg.OperationalError).
+        """
         if not self._pool:
             raise RuntimeError("Postgres client is not connected. Call connect first.")
-        return self._pool.connection()
+        return self._pool.connection(timeout=timeout)
 
 
 postgres_client = PostgresClient()
