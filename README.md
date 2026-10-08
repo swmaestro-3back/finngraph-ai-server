@@ -22,16 +22,6 @@ Each read endpoint returns the nodes and relationships it covers, which a client
 interactive graph. Relationship provenance (source news and disclosures) is inlined in the
 response, so no follow-up fetch is needed.
 
-### Beneficiary recommendation
-
-`GET /api/v1/news/{news_id}/beneficiaries` 는 호재 뉴스의 수혜 종목을 병렬 2트랙(공급망 / 시나리오 테마)으로
-추천한다. 악재는 `not_positive` 로 정상 종료하며, 매 호출 ~20초 동기 생성한다(캐시 없음).
-
-수혜주 응답은 종목 목록(`items`) 외에 사용자에게 그대로 보여줄 문장을 함께 싣는다 —
-`event_interpretation`(분석 서두), 종목별 `rationale`·`caveats`, 그리고 한 탐색 축이
-비었거나 실패했을 때만 채워지는 `analysis_note`(이번 분석 전체의 성격). `status` 가
-`ok` 가 아니면 `reason` 이 어디서 왜 멈췄는지 한 문장으로 알려준다.
-
 ## Directory Structure
 
 ```
@@ -77,7 +67,7 @@ finngraph-ai-server/
 
 ## Environment Variables
 
-Copy .env.example to .env and fill in every value — Settings in app/core/config.py has no defaults, so a missing variable fails fast with a ValidationError at startup, even for variables you don't think you need (e.g. LangSmith tracing, or the API key of the LLM provider you aren't using).
+Copy .env.example to .env and fill in every value — the `NEO4J_*` settings in app/core/config.py have no defaults, so a missing one fails fast with a ValidationError at startup.
 
 ```bash
 cp .env.example .env
@@ -88,15 +78,10 @@ loads them from `.env` at import time. Field names map to the upper-cased variab
 
 > `.env.example` ships placeholders only. Keep real credentials in `.env`, which is gitignored — never commit them.
 
-수혜주 기능 관련 변수:
-
 | Variable | Description |
 | --- | --- |
-| `NEO4J_REASON_VECTOR_INDEX` | `BELONGS_TO.reason_embedding` 관계 벡터 인덱스 이름 (기본 `belongs_to_reason_embedding`). 시나리오 테마 트랙이 이 인덱스로 검색한다 |
-| `DATABASE_URL` | finngraph-etl 의 ETL Postgres 접속 URL (수혜주 기능이 원장·재무를 직접 읽음) |
-| `BEDROCK_EVALUATOR_MODEL` | 후보 심사 모델 (기본 `us.anthropic.claude-sonnet-4-6`) |
-| `BEDROCK_LIGHT_MODEL` | 계획·선별용 경량 모델 (기본 `us.anthropic.claude-haiku-4-5-20251001-v1:0`) |
-| `BEDROCK_EMBEDDING_MODEL` | 시나리오 테마 검색용 임베딩 모델 (기본 `amazon.titan-embed-text-v2:0`). **finngraph-etl 이 `reason_embedding` 을 만들 때 쓴 모델과 반드시 같아야 한다** — 다르면 벡터가 비교 불가능한데 오류 없이 엉뚱한 결과가 나온다 |
+| `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` / `NEO4J_DATABASE` | 지식그래프 Neo4j 접속 정보 |
+| `DATABASE_URL` | finngraph-etl 의 ETL Postgres 접속 URL (종목·테마 시세, 이벤트 메타, 간선 근거 기사·공시를 읽음) |
 
 > When running with Docker, `NEO4J_URI` and `DATABASE_URL` are automatically overridden inside the container to the finngraph-etl network service names (`bolt://neo4j:7687`, `db:5432`), so you can leave the `.env` values as the local ones.
 
@@ -157,10 +142,9 @@ docker compose down
 uv run pytest -m "not integration"
 ```
 
-통합 테스트까지 포함하려면 finngraph-etl 의 Postgres·Neo4j 가 떠 있어야 한다
-(`integration` 마커가 붙은 `test_repository_integration.py`·`test_service_integration.py`
-가 실제 DB 에 시드를 심고 지운다). 마커를 걸지 않은 `uv run pytest` 는 이 둘까지
-같이 돌리므로, DB 가 없으면 실패한다.
+통합 테스트까지 포함하려면 finngraph-etl 의 Postgres 가 떠 있어야 한다
+(`integration` 마커가 붙은 `test_rdb_integration.py` 가 실제 DB 를 읽는다). 마커를
+걸지 않은 `uv run pytest` 는 이것까지 같이 돌리므로, DB 가 없으면 실패한다.
 
 ```bash
 cd ../finngraph-etl && docker compose up -d db neo4j neo4j-init
