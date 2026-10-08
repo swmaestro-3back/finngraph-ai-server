@@ -130,15 +130,15 @@ async def fetch_event_meta(conn: AsyncConnection, cluster_ids: list[int]) -> dic
 
 # ── 근거 기사·공시 ────────────────────────────────────────────────────────────
 
+# 전체 건수는 윈도우 count 로 같은 쿼리에 싣는다 — LIMIT 전에 세므로 한 번 더 묻지 않는다.
 _NEWS_BRIEFS_SQL = """
-SELECT id::text AS news_id, title, link AS url, originallink AS original_url, published_at
+SELECT id::text AS news_id, title, link AS url, originallink AS original_url, published_at,
+       count(*) OVER () AS total
 FROM news
 WHERE id = ANY(%(ids)s)
 ORDER BY published_at DESC NULLS LAST, id DESC
 LIMIT %(limit)s
 """
-
-_NEWS_TOTAL_SQL = "SELECT count(*) AS total FROM news WHERE id = ANY(%(ids)s)"
 
 _NEWS_MONTHLY_SQL = """
 SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS count
@@ -163,9 +163,11 @@ async def fetch_news_briefs(
     if not news_ids:
         return [], 0, []
     rows = await _fetch_all(conn, _NEWS_BRIEFS_SQL, {"ids": news_ids, "limit": limit})
-    total = await _fetch_one(conn, _NEWS_TOTAL_SQL, {"ids": news_ids})
+    total = rows[0]["total"] if rows else 0
+    for row in rows:
+        row.pop("total", None)
     monthly = await _fetch_all(conn, _NEWS_MONTHLY_SQL, {"ids": news_ids})
-    return rows, (total or {}).get("total", 0), monthly
+    return rows, total, monthly
 
 
 async def fetch_disclosure_briefs(conn: AsyncConnection, rcept_nos: list[str]) -> list[dict]:
@@ -176,11 +178,13 @@ async def fetch_disclosure_briefs(conn: AsyncConnection, rcept_nos: list[str]) -
 
 # ── 이벤트 상세 ──────────────────────────────────────────────────────────────
 
+# 전체 기사 수(분석 여부 무관)는 클러스터 행에 서브쿼리로 싣는다 — 기사 목록은 분석된 것만 자르므로 따로 센다.
 _EVENT_CLUSTER_SQL = """
-SELECT id AS cluster_id, title, keywords, representative_news_id,
-       first_published_at, last_published_at
-FROM news_clusters
-WHERE id = %(id)s
+SELECT nc.id AS cluster_id, nc.title, nc.keywords, nc.representative_news_id,
+       nc.first_published_at, nc.last_published_at,
+       (SELECT count(*) FROM news n WHERE n.cluster_id = nc.id) AS news_total
+FROM news_clusters nc
+WHERE nc.id = %(id)s
 """
 
 # 뉴스 모달(Spring /news/{id})이 미분석 기사에 404 를 주므로 열 수 있는 기사만 싣는다.
@@ -191,8 +195,6 @@ WHERE cluster_id = %(id)s AND triple_extracted IS NOT NULL
 ORDER BY published_at DESC NULLS LAST, id DESC
 LIMIT %(limit)s
 """
-
-_EVENT_NEWS_TOTAL_SQL = "SELECT count(*) AS total FROM news WHERE cluster_id = %(id)s"
 
 _EVENT_COMPANIES_SQL = """
 SELECT DISTINCT c.name, c.ticker
@@ -209,6 +211,5 @@ async def fetch_event_detail(conn: AsyncConnection, cluster_id: int, limit: int)
     if cluster is None:
         return None
     news = await _fetch_all(conn, _EVENT_NEWS_SQL, {"id": cluster_id, "limit": limit})
-    total = await _fetch_one(conn, _EVENT_NEWS_TOTAL_SQL, {"id": cluster_id})
     companies = await _fetch_all(conn, _EVENT_COMPANIES_SQL, {"id": cluster_id})
-    return {**cluster, "news": news, "news_total": (total or {}).get("total", 0), "companies": companies}
+    return {**cluster, "news": news, "companies": companies}

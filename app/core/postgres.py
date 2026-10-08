@@ -10,6 +10,11 @@ logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 30.0  # 기동 시 첫 커넥션을 기다리는 상한(초)
 
+# 그래프 요청 하나가 enrich 에서 커넥션 셋을 동시에 쓰고, 근거·이벤트 상세가 하나씩 더 쓴다.
+# psycopg_pool 기본(min=max=4)이면 그래프 요청 둘만 겹쳐도 세 번째 조회가 풀 대기에 걸려 시세가 빠진다.
+POOL_MIN_SIZE = 4
+POOL_MAX_SIZE = 16
+
 
 class PostgresClient:
     """ETL Postgres 커넥션 풀 싱글톤 — 수명주기는 lifespan 이 connect/close 로 잡는다."""
@@ -18,7 +23,9 @@ class PostgresClient:
         self._pool: AsyncConnectionPool | None = None
 
     async def connect(self) -> None:
-        self._pool = AsyncConnectionPool(settings.database_url, open=False)
+        self._pool = AsyncConnectionPool(
+            settings.database_url, open=False, min_size=POOL_MIN_SIZE, max_size=POOL_MAX_SIZE
+        )
         # wait=True 로 첫 커넥션이 열릴 때까지 기다린다 —
         # DB 가 죽어 있으면 첫 요청이 아니라 기동에서 실패한다.
         await self._pool.open(wait=True, timeout=CONNECT_TIMEOUT)

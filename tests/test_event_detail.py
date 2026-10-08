@@ -28,15 +28,16 @@ async def test_fetch_event_detail_none_when_cluster_missing():
 
 
 async def test_fetch_event_detail_collects_news_total_companies():
+    # 전체 기사 수는 클러스터 행에 서브쿼리로 실려 온다 — 쿼리는 클러스터·기사·기업 셋이다
     conn = FakeConn(
-        [CLUSTER],
+        [{**CLUSTER, "news_total": 3}],
         [{"news_id": "11", "title": "t", "url": "u", "original_url": None, "published_at": None}],
-        [{"total": 3}],
         [{"name": "SK하이닉스", "ticker": "000660"}, {"name": "솔리다임", "ticker": None}],
     )
     detail = await rdb.fetch_event_detail(conn, 9, 20)
     assert detail["news_total"] == 3 and len(detail["news"]) == 1
     assert detail["companies"][1] == {"name": "솔리다임", "ticker": None}
+    assert len(conn.calls) == 3
     assert conn.calls[1][1] == {"id": 9, "limit": 20}
 
 

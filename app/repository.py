@@ -241,8 +241,9 @@ async def get_relationship_evidence(element_id: str, limit: int) -> Relationship
     record = records[0]
 
     items = group_news_items(record["news_ids"] or [], record["news_items"] or [])
-    # news_ids 는 적재 경로에 따라 문자열/정수가 섞인다 — 숫자가 아닌 id 는 news.id 와 맞출 수 없어 버린다
-    news_ids = [int(news_id) for news_id in items if news_id.isdigit()]
+    # news_ids 는 적재 경로에 따라 문자열/정수가 섞인다 — 숫자가 아닌 id 는 news.id 와 맞출 수 없어 버린다.
+    # isdigit() 은 '²' 같은 유니코드 숫자도 참이라 int() 가 터진다 — ASCII 십진수만 받는다
+    news_ids = [int(news_id) for news_id in items if news_id.isascii() and news_id.isdecimal()]
     disclosure_items: dict[str, str | None] = {}
     for rcept_no, item in zip(record["rcept_nos"] or [], record["disclosure_items"] or []):
         disclosure_items.setdefault(str(rcept_no), item)

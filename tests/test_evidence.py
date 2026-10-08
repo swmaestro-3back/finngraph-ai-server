@@ -24,19 +24,26 @@ def test_group_news_items_keeps_ids_when_items_are_shorter():
     assert group_news_items([10, 11], ["HBM"]) == {"10": ["HBM"], "11": []}
 
 
-async def test_news_briefs_runs_three_queries_and_skips_empty():
+async def test_news_briefs_runs_two_queries_and_skips_empty():
     empty = FakeConn()
     assert await rdb.fetch_news_briefs(empty, [], 20) == ([], 0, [])
     assert empty.calls == []
 
+    # 전체 건수는 목록 쿼리에 윈도우 count 로 실려 온다 — 행에서 떼어 내고 목록에는 남기지 않는다
     conn = FakeConn(
-        [{"news_id": "11", "title": "t", "url": "u", "original_url": None, "published_at": None}],
-        [{"total": 2}],
+        [{"news_id": "11", "title": "t", "url": "u", "original_url": None, "published_at": None, "total": 2}],
         [{"month": "2026-09", "count": 1}],
     )
     rows, total, monthly = await rdb.fetch_news_briefs(conn, [10, 11], 20)
-    assert rows[0]["news_id"] == "11" and total == 2 and monthly == [{"month": "2026-09", "count": 1}]
+    assert rows == [{"news_id": "11", "title": "t", "url": "u", "original_url": None, "published_at": None}]
+    assert total == 2 and monthly == [{"month": "2026-09", "count": 1}]
+    assert len(conn.calls) == 2
     assert conn.calls[0][1] == {"ids": [10, 11], "limit": 20}
+
+
+async def test_news_briefs_total_is_zero_when_no_rows():
+    conn = FakeConn([], [])
+    assert await rdb.fetch_news_briefs(conn, [10], 20) == ([], 0, [])
 
 
 @asynccontextmanager
