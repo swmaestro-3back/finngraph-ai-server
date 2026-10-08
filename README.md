@@ -24,45 +24,46 @@ response, so no follow-up fetch is needed.
 
 ## Directory Structure
 
+요청은 `api/routes → service → repository` 세 층을 지난다. 라우트는 `service` 의 `get_*` 만 부르고,
+`service` 가 Neo4j·Postgres 조회를 엮어 응답 모델 하나를 완성하며, `repository` 는 저장소별·도메인별로
+쿼리 하나씩만 실행한다.
+
 ```
 finngraph-ai-server/
 ├── app/
-│   ├── main.py               # FastAPI app entrypoint (lifespan, router mounting)
-│   ├── repository.py         # Neo4j READ 계층 (Cypher 정의 + 실행, 스키마 변환 위임)
-│   ├── mappers.py            # neo4j Record/Node/Relationship → 응답 스키마 변환
-│   ├── schemas.py            # Pydantic response schemas (CompanyResponse, SupplyChainResponse, CompanyEventsResponse, ThemeResponse)
-│   ├── graph.py              # Graph schema constants (NodeLabel, RelationshipType)
-│   ├── enums.py              # API-facing enums (Market, MarketIndex)
+│   ├── main.py               # FastAPI 앱 (lifespan: Neo4j 드라이버·Postgres 풀, /health)
+│   ├── schemas.py            # Pydantic 응답 모델
+│   ├── enums.py              # API 쿼리 파라미터 enum (Market, MarketIndex)
 │   ├── api/
-│   │   ├── main.py           # Aggregates all route routers into api_router
-│   │   └── routes/           # Endpoint handlers
-│   │       ├── company.py
-│   │       ├── theme.py
-│   │       └── news.py
-│   ├── beneficiary/          # 수혜주 추천 에이전트 기능
-│   │   ├── schemas.py        # HTTP 응답 계약
-│   │   ├── service.py        # 유스케이스 — HTTP 계약을 아는 유일한 곳
-│   │   ├── repository.py     # Postgres·Neo4j 조회
-│   │   ├── models.py         # 도메인 모델 + LLM 구조화 출력 계약
-│   │   └── agent/            # LangGraph 본체 — FastAPI 를 모른다
-│   │       ├── workflow.py   # 그래프 조립·라우팅 (팬아웃/팬인)
-│   │       ├── state.py
-│   │       ├── nodes/        # 공통 단계 노드 (planner/candidate_selector/finance_collector/evaluator)
-│   │       ├── subgraphs/    # 병렬 트랙 서브그래프 (supply/, theme/ — 각자 nodes·state·graph)
-│   │       ├── prompts/      # 시스템 프롬프트 + PROMPT_VERSION
-│   │       └── utils/        # Bedrock 러너블·프롬프트 패킹·출력 후처리
-│   ├── core/
-│   │   ├── config.py         # Settings loaded from .env (pydantic-settings)
-│   │   ├── db.py             # Neo4j async driver (singleton)
-│   │   ├── postgres.py       # PostgresClient — async 커넥션 풀 싱글톤 (수혜주 기능용)
-│   │   ├── graph_schema.py   # 수혜주 기능의 그래프 어휘 (NodeLabel, RelationshipType, MARKETS)
-│   │   └── logger.py         # Logging setup
-├── tests/
-│   └── beneficiary/          # 단위 테스트 + 통합 테스트(`integration` 마커, 로컬 DB 필요)
-├── Dockerfile                # API image build
-├── docker-compose.yml        # api service (Neo4j·Postgres 는 finngraph-etl 스택 공유)
-├── pyproject.toml            # Project metadata & dependencies (uv)
-└── .env.example              # Environment variable template
+│   │   ├── main.py           # 라우터 묶음 (api_router)
+│   │   ├── cache.py          # 성공 응답 Cache-Control
+│   │   └── routes/           # 엔드포인트 — company, theme, news, relationship, event
+│   ├── service/              # 응답 조립 — 도메인별로 routes 와 1:1
+│   │   ├── company.py        #   기업 그래프·공급망 (+ 시세 enrich)
+│   │   ├── theme.py          #   테마·소속 테마 (+ 시세 enrich)
+│   │   ├── event.py          #   이벤트 서브그래프, 이벤트 상세(PG 3쿼리 + 시세)
+│   │   ├── relationship.py   #   간선 근거(Neo4j 참조 → PG 기사·공시)
+│   │   ├── news.py           #   뉴스 그래프 (시드 → 확장 → 보강, NewsGraphAccumulator)
+│   │   ├── enrich.py         #   그래프 응답 노드에 종목·테마 시세, 이벤트 메타를 붙임
+│   │   └── common.py         #   PG 커넥션 대기 상한
+│   ├── repository/
+│   │   ├── neo4j/            # Cypher + Record → 스키마 변환
+│   │   │   ├── mappers.py    #   Node/Relationship/Path → 응답 스키마
+│   │   │   ├── company.py, theme.py, event.py, relationship.py, news.py
+│   │   └── postgres/         # SQL — 커넥션을 받아 dict 행만 돌려줌
+│   │       ├── base.py       #   fetch_all/fetch_one, 값 변환(Decimal·date)
+│   │       ├── quote.py, event.py, news.py, disclosure.py
+│   └── core/
+│       ├── config.py         # Settings (.env, pydantic-settings)
+│       ├── db.py             # Neo4j async driver 싱글톤
+│       ├── postgres.py       # PostgresClient — async 커넥션 풀 싱글톤
+│       ├── graph.py          # 그래프 어휘 (NodeLabel, RelationshipType)
+│       └── logger.py
+├── tests/                    # 단위 테스트 + `integration` 마커(로컬 ETL DB 필요)
+├── Dockerfile
+├── compose.yaml              # api service (Neo4j·Postgres 는 finngraph-etl 스택 공유)
+├── pyproject.toml
+└── .env.example
 ```
 
 ## Environment Variables

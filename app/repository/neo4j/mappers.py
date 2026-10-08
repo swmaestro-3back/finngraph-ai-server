@@ -5,7 +5,7 @@ from typing import Any
 from neo4j import Record
 from neo4j.graph import Node, Path, Relationship
 
-from graph import NodeLabel, RelationshipType
+from core import NodeLabel, RelationshipType
 from schemas import (
     BelongsToRelationship,
     CompanyEventsResponse,
