@@ -13,13 +13,17 @@ from schemas import (
     CompanyResponse,
     CompanyThemesResponse,
     DisclosureMention,
+    EventCompany,
+    EventDetailResponse,
     EventNode,
     EvidenceDisclosure,
     EvidenceNews,
     HasEventRelationship,
     MonthlyCount,
+    NewsBrief,
     NewsMention,
     RelationshipEvidenceResponse,
+    StockQuote,
     SupplyChainResponse,
     SupplyRelationship,
     ThemeNode,
@@ -267,3 +271,20 @@ def to_relationship_evidence(
             for row in disclosure_rows
         ],
     )
+
+
+# ---------------------------------------------------------------- 이벤트 상세
+
+
+def to_event_detail(detail: dict[str, Any], quotes: dict[str, dict[str, Any]]) -> EventDetailResponse:
+    companies = [
+        EventCompany(
+            name=row["name"],
+            ticker=row["ticker"],
+            quote=StockQuote(**quotes[row["ticker"]]) if row["ticker"] in quotes else None,
+        )
+        for row in detail["companies"]
+    ]
+    news = [NewsBrief(**row) for row in detail["news"]]
+    fields = {k: v for k, v in detail.items() if k not in ("companies", "news")}
+    return EventDetailResponse(**fields, news=news, companies=companies)

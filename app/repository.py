@@ -11,6 +11,7 @@ from mappers import (
     to_company_events_response,
     to_company_response,
     to_company_themes_response,
+    to_event_detail,
     to_relationship_evidence,
     to_supplychain_response,
     to_theme_response,
@@ -20,6 +21,7 @@ from schemas import (
     CompanyEventsResponse,
     CompanyResponse,
     CompanyThemesResponse,
+    EventDetailResponse,
     NewsGraphResponse,
     RelationshipEvidenceResponse,
     SupplyChainResponse,
@@ -249,3 +251,14 @@ async def get_relationship_evidence(element_id: str, limit: int) -> Relationship
         disclosure_rows = await rdb.fetch_disclosure_briefs(conn, list(disclosure_items))
 
     return to_relationship_evidence(items, news_rows, news_total, monthly, disclosure_rows, disclosure_items)
+
+
+async def get_event_detail(cluster_id: int, limit: int) -> EventDetailResponse | None:
+    """이벤트의 키워드·기사·관련 기업(시세 포함). 클러스터가 없으면 None(404)."""
+    async with postgres_client.connection() as conn:
+        detail = await rdb.fetch_event_detail(conn, cluster_id, limit)
+        if detail is None:
+            return None
+        tickers = sorted({row["ticker"] for row in detail["companies"] if row["ticker"]})
+        quotes = await rdb.fetch_stock_quotes(conn, tickers)
+    return to_event_detail(detail, quotes)

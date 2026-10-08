@@ -205,3 +205,28 @@ class RelationshipEvidenceResponse(BaseModel):
     news_total: int = Field(default=0, description="Postgres 에 있는 근거 기사 수")
     monthly: list[MonthlyCount] = Field(default_factory=list, description="오래된 달부터. 빈 달은 없다")
     disclosures: list[EvidenceDisclosure] = Field(default_factory=list)
+
+
+class EventCompany(BaseModel):
+    name: str
+    ticker: str | None = None
+    quote: StockQuote | None = None
+
+
+class EventDetailResponse(BaseModel):
+    """이벤트(뉴스 클러스터) 상세 — Postgres news_clusters·news·news_companies 에서 읽는다.
+
+    news 는 관계 분석을 거친(triple_extracted IS NOT NULL) 기사만 최신순 limit 건이다.
+    news_total 은 분석 여부와 무관한 클러스터 전체 기사 수다.
+    """
+
+    cluster_id: int
+    title: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    member_count: int | None = None
+    representative_news_id: int | None = None
+    first_published_at: str | None = None
+    last_published_at: str | None = None
+    news: list[NewsBrief] = Field(default_factory=list)
+    news_total: int = 0
+    companies: list[EventCompany] = Field(default_factory=list)

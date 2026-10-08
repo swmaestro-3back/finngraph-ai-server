@@ -169,3 +169,43 @@ async def fetch_disclosure_briefs(conn: AsyncConnection, rcept_nos: list[str]) -
     if not rcept_nos:
         return []
     return await _fetch_all(conn, _DISCLOSURE_BRIEFS_SQL, {"rcept_nos": rcept_nos})
+
+
+# ── 이벤트 상세 ──────────────────────────────────────────────────────────────
+
+_EVENT_CLUSTER_SQL = """
+SELECT id AS cluster_id, title, keywords, member_count, representative_news_id,
+       first_published_at, last_published_at
+FROM news_clusters
+WHERE id = %(id)s
+"""
+
+# 뉴스 모달(Spring /news/{id})이 미분석 기사에 404 를 주므로 열 수 있는 기사만 싣는다.
+_EVENT_NEWS_SQL = """
+SELECT id::text AS news_id, title, link AS url, originallink AS original_url, published_at
+FROM news
+WHERE cluster_id = %(id)s AND triple_extracted IS NOT NULL
+ORDER BY published_at DESC NULLS LAST, id DESC
+LIMIT %(limit)s
+"""
+
+_EVENT_NEWS_TOTAL_SQL = "SELECT count(*) AS total FROM news WHERE cluster_id = %(id)s"
+
+_EVENT_COMPANIES_SQL = """
+SELECT DISTINCT c.name, c.ticker
+FROM news n
+JOIN news_companies nc ON nc.news_id = n.id
+JOIN companies c ON c.id = nc.company_id
+WHERE n.cluster_id = %(id)s
+ORDER BY c.name
+"""
+
+
+async def fetch_event_detail(conn: AsyncConnection, cluster_id: int, limit: int) -> dict | None:
+    cluster = await _fetch_one(conn, _EVENT_CLUSTER_SQL, {"id": cluster_id})
+    if cluster is None:
+        return None
+    news = await _fetch_all(conn, _EVENT_NEWS_SQL, {"id": cluster_id, "limit": limit})
+    total = await _fetch_one(conn, _EVENT_NEWS_TOTAL_SQL, {"id": cluster_id})
+    companies = await _fetch_all(conn, _EVENT_COMPANIES_SQL, {"id": cluster_id})
+    return {**cluster, "news": news, "news_total": (total or {}).get("total", 0), "companies": companies}

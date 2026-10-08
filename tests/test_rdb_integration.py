@@ -66,3 +66,12 @@ async def test_disclosure_briefs(conn):
     rcept_no = await pick(conn, "SELECT rcept_no FROM disclosures LIMIT 1")
     rows = await rdb.fetch_disclosure_briefs(conn, [rcept_no])
     assert rows[0]["rcept_no"] == rcept_no and isinstance(rows[0]["rcept_dt"], str)
+
+
+async def test_event_detail(conn):
+    cluster_id = await pick(conn, "SELECT cluster_id FROM news WHERE cluster_id IS NOT NULL LIMIT 1")
+    detail = await rdb.fetch_event_detail(conn, cluster_id, 5)
+    assert detail["cluster_id"] == cluster_id
+    assert detail["news_total"] >= len(detail["news"])
+    assert all(set(c) == {"name", "ticker"} for c in detail["companies"])
+    assert await rdb.fetch_event_detail(conn, -1, 5) is None
