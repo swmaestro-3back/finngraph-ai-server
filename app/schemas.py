@@ -170,3 +170,38 @@ class NewsGraphResponse(BaseModel):
     truncated: bool = Field(
         default=False, description="전체 노드 상한에 걸려 확장 이웃을 일부 버렸는가"
     )
+
+
+class NewsBrief(BaseModel):
+    """목록 한 줄에 필요한 만큼의 기사 정보."""
+
+    news_id: str
+    title: str | None = None
+    url: str | None = None
+    original_url: str | None = None
+    published_at: str | None = None
+
+
+class EvidenceNews(NewsBrief):
+    items: list[str] = Field(default_factory=list, description="이 기사에서 뽑힌 품목 문구")
+
+
+class MonthlyCount(BaseModel):
+    month: str = Field(description="YYYY-MM")
+    count: int
+
+
+class EvidenceDisclosure(BaseModel):
+    rcept_no: str
+    report_nm: str | None = None
+    rcept_dt: str | None = None
+    item: str | None = None
+
+
+class RelationshipEvidenceResponse(BaseModel):
+    """간선 근거 — 최신 기사 limit 건, 기사 전체 건수, 전체 기간 월별 건수, 공시."""
+
+    news: list[EvidenceNews] = Field(default_factory=list, description="최신순")
+    news_total: int = Field(default=0, description="Postgres 에 있는 근거 기사 수")
+    monthly: list[MonthlyCount] = Field(default_factory=list, description="오래된 달부터. 빈 달은 없다")
+    disclosures: list[EvidenceDisclosure] = Field(default_factory=list)

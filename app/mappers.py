@@ -14,8 +14,12 @@ from schemas import (
     CompanyThemesResponse,
     DisclosureMention,
     EventNode,
+    EvidenceDisclosure,
+    EvidenceNews,
     HasEventRelationship,
+    MonthlyCount,
     NewsMention,
+    RelationshipEvidenceResponse,
     SupplyChainResponse,
     SupplyRelationship,
     ThemeNode,
@@ -231,3 +235,35 @@ def to_company_response(record: Record) -> CompanyResponse:
             relationships.append(build_supply(rel))
 
     return CompanyResponse(companies=companies, events=events, relationships=relationships)
+
+
+# ---------------------------------------------------------------- 간선 근거
+
+
+def group_news_items(news_ids: list[Any], news_items: list[Any]) -> dict[str, list[str]]:
+    """간선의 news_ids·news_items 를 기사별 품목 목록으로. 같은 기사가 품목만 달리 여러 번 실려 온다."""
+    grouped: dict[str, list[str]] = {}
+    for news_id, item in _zip_mentions(news_ids, news_items):
+        items = grouped.setdefault(news_id, [])
+        if item and item not in items:
+            items.append(item)
+    return grouped
+
+
+def to_relationship_evidence(
+    items: dict[str, list[str]],
+    news_rows: list[dict[str, Any]],
+    news_total: int,
+    monthly: list[dict[str, Any]],
+    disclosure_rows: list[dict[str, Any]],
+    disclosure_items: dict[str, str | None],
+) -> RelationshipEvidenceResponse:
+    return RelationshipEvidenceResponse(
+        news=[EvidenceNews(**row, items=items.get(row["news_id"], [])) for row in news_rows],
+        news_total=news_total,
+        monthly=[MonthlyCount(**row) for row in monthly],
+        disclosures=[
+            EvidenceDisclosure(**row, item=disclosure_items.get(row["rcept_no"]))
+            for row in disclosure_rows
+        ],
+    )

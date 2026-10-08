@@ -53,3 +53,16 @@ async def test_event_meta(conn):
     meta = await rdb.fetch_event_meta(conn, [cluster_id])
     assert isinstance(meta[cluster_id]["keywords"], list)
     assert isinstance(meta[cluster_id]["member_count"], int)
+
+
+async def test_news_briefs(conn):
+    news_id = await pick(conn, "SELECT id FROM news WHERE published_at IS NOT NULL LIMIT 1")
+    rows, total, monthly = await rdb.fetch_news_briefs(conn, [news_id, -1], 5)
+    assert [r["news_id"] for r in rows] == [str(news_id)]
+    assert total == 1 and monthly[0]["count"] == 1 and len(monthly[0]["month"]) == 7
+
+
+async def test_disclosure_briefs(conn):
+    rcept_no = await pick(conn, "SELECT rcept_no FROM disclosures LIMIT 1")
+    rows = await rdb.fetch_disclosure_briefs(conn, [rcept_no])
+    assert rows[0]["rcept_no"] == rcept_no and isinstance(rows[0]["rcept_dt"], str)

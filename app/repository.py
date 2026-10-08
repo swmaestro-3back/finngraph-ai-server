@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from typing import Any, LiteralString, cast
 
-from core import neo4j_database
+import rdb
+from core import neo4j_database, postgres_client
 from enrich import enrich_graph
 from enums import Market, MarketIndex
 from mappers import (
+    group_news_items,
     to_company_events_response,
     to_company_response,
     to_company_themes_response,
+    to_relationship_evidence,
     to_supplychain_response,
     to_theme_response,
 )
@@ -18,6 +21,7 @@ from schemas import (
     CompanyResponse,
     CompanyThemesResponse,
     NewsGraphResponse,
+    RelationshipEvidenceResponse,
     SupplyChainResponse,
     ThemeResponse,
 )
@@ -89,6 +93,16 @@ MATCH (c:Company)
 WHERE c.ticker = $key
 OPTIONAL MATCH path = (c)-[:HAS_EVENT*1..{hop}]-()
 RETURN c AS center, collect(path) AS paths
+"""
+
+# ---------------------------------------------------------------- 간선 근거
+
+# 그래프 응답이 준 간선 elementId 로 근거 목록만 꺼낸다 — 제목·날짜는 Postgres 가 갖고 있다.
+_RELATIONSHIP_EVIDENCE_QUERY: LiteralString = """
+MATCH (:Company)-[r:SUPPLIES_TO|ACQUIRES|INVESTS_IN]->(:Company)
+WHERE elementId(r) = $id
+RETURN r.news_ids AS news_ids, r.news_items AS news_items,
+       r.disclosure_rcept_nos AS rcept_nos, r.disclosure_items AS disclosure_items
 """
 
 # ---------------------------------------------------------------- 뉴스 그래프
@@ -212,3 +226,26 @@ async def get_news_graph(news_id: str, hop: int = 1) -> NewsGraphResponse | None
         acc.add_closure(records)
 
     return acc.to_response()
+
+
+async def get_relationship_evidence(element_id: str, limit: int) -> RelationshipEvidenceResponse | None:
+    """간선의 근거 기사(최신 limit 건·전체 건수·월별 건수)와 공시. 간선이 없으면 None(404)."""
+    records = await neo4j_database.execute(_RELATIONSHIP_EVIDENCE_QUERY, {"id": element_id})
+    if not records:
+        return None
+    record = records[0]
+
+    items = group_news_items(record["news_ids"] or [], record["news_items"] or [])
+    # news_ids 는 적재 경로에 따라 문자열/정수가 섞인다 — 숫자가 아닌 id 는 news.id 와 맞출 수 없어 버린다
+    news_ids = [int(news_id) for news_id in items if news_id.isdigit()]
+    disclosure_items: dict[str, str | None] = {}
+    for rcept_no, item in zip(record["rcept_nos"] or [], record["disclosure_items"] or []):
+        disclosure_items.setdefault(str(rcept_no), item)
+    for rcept_no in record["rcept_nos"] or []:
+        disclosure_items.setdefault(str(rcept_no), None)
+
+    async with postgres_client.connection() as conn:
+        news_rows, news_total, monthly = await rdb.fetch_news_briefs(conn, news_ids, limit)
+        disclosure_rows = await rdb.fetch_disclosure_briefs(conn, list(disclosure_items))
+
+    return to_relationship_evidence(items, news_rows, news_total, monthly, disclosure_rows, disclosure_items)

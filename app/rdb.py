@@ -123,3 +123,49 @@ async def fetch_event_meta(conn: AsyncConnection, cluster_ids: list[int]) -> dic
         return {}
     rows = await _fetch_all(conn, _EVENT_META_SQL, {"cluster_ids": cluster_ids})
     return {row.pop("cluster_id"): row for row in rows}
+
+
+# ── 근거 기사·공시 ────────────────────────────────────────────────────────────
+
+_NEWS_BRIEFS_SQL = """
+SELECT id::text AS news_id, title, link AS url, originallink AS original_url, published_at
+FROM news
+WHERE id = ANY(%(ids)s)
+ORDER BY published_at DESC NULLS LAST, id DESC
+LIMIT %(limit)s
+"""
+
+_NEWS_TOTAL_SQL = "SELECT count(*) AS total FROM news WHERE id = ANY(%(ids)s)"
+
+_NEWS_MONTHLY_SQL = """
+SELECT to_char(date_trunc('month', published_at), 'YYYY-MM') AS month, count(*) AS count
+FROM news
+WHERE id = ANY(%(ids)s) AND published_at IS NOT NULL
+GROUP BY 1
+ORDER BY 1
+"""
+
+_DISCLOSURE_BRIEFS_SQL = """
+SELECT rcept_no, report_nm, rcept_dt
+FROM disclosures
+WHERE rcept_no = ANY(%(rcept_nos)s)
+ORDER BY rcept_dt DESC, rcept_no DESC
+"""
+
+
+async def fetch_news_briefs(
+    conn: AsyncConnection, news_ids: list[int], limit: int
+) -> tuple[list[dict], int, list[dict]]:
+    """(최신 limit 건, 전체 건수, 월별 건수). 전체 건수는 발행일 없는 기사도 센다."""
+    if not news_ids:
+        return [], 0, []
+    rows = await _fetch_all(conn, _NEWS_BRIEFS_SQL, {"ids": news_ids, "limit": limit})
+    total = await _fetch_one(conn, _NEWS_TOTAL_SQL, {"ids": news_ids})
+    monthly = await _fetch_all(conn, _NEWS_MONTHLY_SQL, {"ids": news_ids})
+    return rows, (total or {}).get("total", 0), monthly
+
+
+async def fetch_disclosure_briefs(conn: AsyncConnection, rcept_nos: list[str]) -> list[dict]:
+    if not rcept_nos:
+        return []
+    return await _fetch_all(conn, _DISCLOSURE_BRIEFS_SQL, {"rcept_nos": rcept_nos})
