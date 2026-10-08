@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import logging
 
-import enrich
-from repository import postgres
-import repository
 from core import neo4j_database
+from repository import postgres
 from schemas import CompanyNode, CompanyResponse, EventNode, ThemeNode, ThemeResponse
+from service import company as company_service, enrich
 
 STOCK = {"price": 263500.0, "change": -1.86, "price_date": "2026-10-08",
          "market_cap": 1, "r_1w": -4.01, "r_1m": None, "r_3m": None}
@@ -91,9 +90,9 @@ async def test_repository_enriches_company_overview(monkeypatch):
         seen.append(resp)
 
     monkeypatch.setattr(neo4j_database, "execute", execute)
-    monkeypatch.setattr(repository, "enrich_graph", fake_enrich)
+    monkeypatch.setattr(company_service, "enrich_graph", fake_enrich)
 
-    resp = await repository.get_company("005930")
+    resp = await company_service.get_company("005930")
     assert seen == [resp]
 
 

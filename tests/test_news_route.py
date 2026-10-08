@@ -1,10 +1,10 @@
-"""뉴스 그래프 라우트 — repository를 monkeypatch 해 DB 없이 상태 코드와 파라미터 검증만 본다."""
+"""뉴스 그래프 라우트 — service 를 monkeypatch 해 DB 없이 상태 코드와 파라미터 검증만 본다."""
 from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import repository
+import service
 from api.routes import news
 from schemas import NewsGraphResponse
 
@@ -22,7 +22,7 @@ def test_returns_graph_and_passes_hop(monkeypatch):
         calls.append((news_id, hop))
         return NewsGraphResponse(seed_relationship_ids=["r1"], truncated=True)
 
-    monkeypatch.setattr(repository, "get_news_graph", fake)
+    monkeypatch.setattr(service, "get_news_graph", fake)
 
     res = make_client().get("/api/v1/news/123/graph?hop=2")
 
@@ -38,7 +38,7 @@ def test_404_when_news_has_no_relationships(monkeypatch):
     async def fake(news_id: str, hop: int = 1):
         return None
 
-    monkeypatch.setattr(repository, "get_news_graph", fake)
+    monkeypatch.setattr(service, "get_news_graph", fake)
 
     res = make_client().get("/api/v1/news/999/graph")
     assert res.status_code == 404
@@ -48,7 +48,7 @@ def test_hop_out_of_range_is_422(monkeypatch):
     async def fake(news_id: str, hop: int = 1):
         raise AssertionError("검증에서 걸러져야 한다")
 
-    monkeypatch.setattr(repository, "get_news_graph", fake)
+    monkeypatch.setattr(service, "get_news_graph", fake)
 
     assert make_client().get("/api/v1/news/1/graph?hop=0").status_code == 422
     assert make_client().get("/api/v1/news/1/graph?hop=4").status_code == 422

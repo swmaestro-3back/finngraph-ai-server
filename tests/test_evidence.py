@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from repository import postgres
-import repository
+import service
 from api.routes import relationship
 from fake_pg import FakeConn
 from core import neo4j_database, postgres_client
@@ -74,7 +74,7 @@ async def test_repository_builds_evidence(monkeypatch):
     monkeypatch.setattr(postgres, "fetch_news_briefs", news_briefs)
     monkeypatch.setattr(postgres, "fetch_disclosure_briefs", disclosure_briefs)
 
-    res = await repository.get_relationship_evidence("5:abc:12", 5)
+    res = await service.get_relationship_evidence("5:abc:12", 5)
     assert [n.news_id for n in res.news] == ["11", "10"]
     assert res.news[1].items == ["HBM"] and res.news[0].items == []
     assert res.news_total == 2 and res.monthly[0].count == 2
@@ -85,7 +85,7 @@ async def test_repository_returns_none_when_relationship_missing(monkeypatch):
     async def execute(query, params):
         return []
     monkeypatch.setattr(neo4j_database, "execute", execute)
-    assert await repository.get_relationship_evidence("5:abc:99", 20) is None
+    assert await service.get_relationship_evidence("5:abc:99", 20) is None
 
 
 def make_client() -> TestClient:
@@ -101,7 +101,7 @@ def test_element_id_with_colons_matches(monkeypatch):
         calls.append((element_id, limit))
         return RelationshipEvidenceResponse()
 
-    monkeypatch.setattr(repository, "get_relationship_evidence", fake)
+    monkeypatch.setattr(service, "get_relationship_evidence", fake)
     res = make_client().get("/api/v1/relationships/5%3Aabc%3A12/evidence?limit=5")
     assert res.status_code == 200
     assert calls == [("5:abc:12", 5)]
@@ -115,12 +115,12 @@ def test_404_422_503(monkeypatch):
     async def down(element_id: str, limit: int = 20):
         raise psycopg.OperationalError("pg down")
 
-    monkeypatch.setattr(repository, "get_relationship_evidence", missing)
+    monkeypatch.setattr(service, "get_relationship_evidence", missing)
     assert make_client().get("/api/v1/relationships/1/evidence").status_code == 404
     assert make_client().get("/api/v1/relationships/1/evidence?limit=0").status_code == 422
     assert make_client().get("/api/v1/relationships/1/evidence?limit=51").status_code == 422
 
-    monkeypatch.setattr(repository, "get_relationship_evidence", down)
+    monkeypatch.setattr(service, "get_relationship_evidence", down)
     assert make_client().get("/api/v1/relationships/1/evidence").status_code == 503
 
 
@@ -137,5 +137,5 @@ async def test_evidence_waits_for_pool_at_most_a_few_seconds(monkeypatch):
 
     monkeypatch.setattr(neo4j_database, "execute", execute)
     monkeypatch.setattr(postgres_client, "connection", connection)
-    await repository.get_relationship_evidence("5:abc:1", 5)
+    await service.get_relationship_evidence("5:abc:1", 5)
     assert seen and seen[0] is not None and seen[0] <= 3

@@ -1,10 +1,10 @@
-"""repository.get_news_graph — neo4j_database.execute를 페이크로 바꿔 시드→확장→보강 오케스트레이션만 검증한다."""
+"""service.get_news_graph — neo4j_database.execute를 페이크로 바꿔 시드→확장→보강 오케스트레이션만 검증한다."""
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-import repository
+from service import news as news_service
 from core import neo4j_database
 
 
@@ -65,7 +65,7 @@ def test_hop1_only_runs_seed_query(monkeypatch):
     fake = FakeExecutor([[{"a": A, "r": FakeRel("r1", A, B), "b": B}]])
     monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
-    res = asyncio.run(repository.get_news_graph("10", hop=1))
+    res = asyncio.run(news_service.get_news_graph("10", hop=1))
 
     assert len(fake.calls) == 1
     assert fake.query_kind(0) == "seed"
@@ -86,7 +86,7 @@ def test_hop3_expands_twice_then_closes(monkeypatch):
     )
     monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
-    res = asyncio.run(repository.get_news_graph("10", hop=3))
+    res = asyncio.run(news_service.get_news_graph("10", hop=3))
 
     assert len(fake.calls) == 4
     assert fake.query_kind(0) == "seed"
@@ -94,13 +94,13 @@ def test_hop3_expands_twice_then_closes(monkeypatch):
     assert fake.query_kind(1) == "expand"
     assert fake.calls[1][1] == {
         "frontier": ["A", "B"],
-        "per_node": repository.NEWS_EXPAND_PER_NODE,
+        "per_node": news_service.NEWS_EXPAND_PER_NODE,
     }
 
     assert fake.query_kind(2) == "expand"
     assert fake.calls[2][1] == {
         "frontier": ["C"],
-        "per_node": repository.NEWS_EXPAND_PER_NODE,
+        "per_node": news_service.NEWS_EXPAND_PER_NODE,
     }
 
     assert fake.query_kind(3) == "closure"
@@ -115,14 +115,14 @@ def test_no_seeds_returns_none_without_further_calls(monkeypatch):
     fake = FakeExecutor([[]])
     monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
-    res = asyncio.run(repository.get_news_graph("10", hop=3))
+    res = asyncio.run(news_service.get_news_graph("10", hop=3))
 
     assert res is None
     assert len(fake.calls) == 1
 
 
 def test_hop3_stops_expanding_once_cap_hit(monkeypatch):
-    monkeypatch.setattr(repository, "NEWS_MAX_NODES", 3)
+    monkeypatch.setattr(news_service, "NEWS_MAX_NODES", 3)
     fake = FakeExecutor(
         [
             [{"a": A, "r": FakeRel("r1", A, B), "b": B}],  # seed: A, B (len=2)
@@ -135,7 +135,7 @@ def test_hop3_stops_expanding_once_cap_hit(monkeypatch):
     )
     monkeypatch.setattr(neo4j_database, "execute", fake.execute)
 
-    res = asyncio.run(repository.get_news_graph("10", hop=3))
+    res = asyncio.run(news_service.get_news_graph("10", hop=3))
 
     assert len(fake.calls) == 3
     assert fake.query_kind(0) == "seed"

@@ -3,7 +3,7 @@ import logging
 import psycopg
 from fastapi import APIRouter, HTTPException, Query, Response
 
-import repository
+import service
 from api.cache import EVENT_MAX_AGE, cacheable
 from schemas import EventDetailResponse
 
@@ -19,7 +19,7 @@ async def get_event_detail(
 ) -> EventDetailResponse:
     """이벤트(뉴스 클러스터)의 키워드·기사·관련 기업. cluster_id 는 그래프 이벤트 노드의 cluster_id 다."""
     try:
-        detail = await repository.get_event_detail(cluster_id, limit)
+        detail = await service.get_event_detail(cluster_id, limit)
     except psycopg.Error:
         logger.exception("Event lookup failed: %s", cluster_id)
         raise HTTPException(status_code=503, detail="Event lookup failed. Retry later.")

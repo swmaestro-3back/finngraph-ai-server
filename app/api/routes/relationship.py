@@ -3,7 +3,7 @@ import logging
 import psycopg
 from fastapi import APIRouter, HTTPException, Query, Response
 
-import repository
+import service
 from api.cache import EVIDENCE_MAX_AGE, cacheable
 from schemas import RelationshipEvidenceResponse
 
@@ -22,7 +22,7 @@ async def get_relationship_evidence(
     element_id 는 그래프 응답의 관계 id(Neo4j elementId)다. 기사 제목·날짜는 Postgres 에서 읽는다.
     """
     try:
-        evidence = await repository.get_relationship_evidence(element_id, limit)
+        evidence = await service.get_relationship_evidence(element_id, limit)
     except psycopg.Error:
         logger.exception("Evidence lookup failed: %s", element_id)
         raise HTTPException(status_code=503, detail="Evidence lookup failed. Retry later.")

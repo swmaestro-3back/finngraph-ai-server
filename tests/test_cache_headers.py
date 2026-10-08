@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import repository
+import service
 from api.cache import EVENT_MAX_AGE, EVIDENCE_MAX_AGE, GRAPH_MAX_AGE, cache_control
 from api.routes import company, event, relationship, theme
 from schemas import (
@@ -52,10 +52,10 @@ def test_graph_routes_set_cache_control(monkeypatch):
     async def theme_ok(name: str):
         return ThemeResponse(theme=ThemeNode(id="t1", name=name))
 
-    monkeypatch.setattr(repository, "get_company", company_ok)
-    monkeypatch.setattr(repository, "get_company_supplychain", supply_ok)
-    monkeypatch.setattr(repository, "get_company_themes", themes_ok)
-    monkeypatch.setattr(repository, "get_theme", theme_ok)
+    monkeypatch.setattr(service, "get_company", company_ok)
+    monkeypatch.setattr(service, "get_company_supplychain", supply_ok)
+    monkeypatch.setattr(service, "get_company_themes", themes_ok)
+    monkeypatch.setattr(service, "get_theme", theme_ok)
 
     client = make_client()
     expected = cache_control(GRAPH_MAX_AGE)
@@ -77,8 +77,8 @@ def test_evidence_and_event_routes_set_their_own_budget(monkeypatch):
     async def event_ok(cluster_id: int, limit: int = 20):
         return EventDetailResponse(cluster_id=cluster_id)
 
-    monkeypatch.setattr(repository, "get_relationship_evidence", evidence_ok)
-    monkeypatch.setattr(repository, "get_event_detail", event_ok)
+    monkeypatch.setattr(service, "get_relationship_evidence", evidence_ok)
+    monkeypatch.setattr(service, "get_event_detail", event_ok)
     client = make_client()
     assert client.get("/api/v1/relationships/5%3Aabc%3A1/evidence").headers["cache-control"] == cache_control(
         EVIDENCE_MAX_AGE, stale=EVIDENCE_MAX_AGE
@@ -90,8 +90,8 @@ def test_error_responses_are_not_cacheable(monkeypatch):
     async def missing(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(repository, "get_company", missing)
-    monkeypatch.setattr(repository, "get_relationship_evidence", missing)
+    monkeypatch.setattr(service, "get_company", missing)
+    monkeypatch.setattr(service, "get_relationship_evidence", missing)
     client = make_client()
     for path in ("/api/v1/companies/000000", "/api/v1/relationships/1/evidence"):
         res = client.get(path)

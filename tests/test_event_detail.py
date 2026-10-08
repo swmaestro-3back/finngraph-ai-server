@@ -8,11 +8,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from repository import postgres
-import repository
+import service
 from api.routes import event
 from fake_pg import FakeConn
 from core import postgres_client
-from repository.neo4j.mappers import to_event_detail
+from service.event import to_event_detail
 from schemas import EventDetailResponse
 
 CLUSTER = {
@@ -67,7 +67,7 @@ async def test_repository_get_event_detail(monkeypatch):
     monkeypatch.setattr(postgres_client, "connection", fake_connection)
     monkeypatch.setattr(postgres, "fetch_event_detail", fetch_detail)
     monkeypatch.setattr(postgres, "fetch_stock_quotes", quotes)
-    res = await repository.get_event_detail(9, 20)
+    res = await service.get_event_detail(9, 20)
     assert res.cluster_id == 9 and res.companies[0].quote is None
 
 
@@ -87,10 +87,10 @@ def test_routes(monkeypatch):
     async def down(cluster_id: int, limit: int = 20):
         raise psycopg.OperationalError("pg down")
 
-    monkeypatch.setattr(repository, "get_event_detail", ok)
+    monkeypatch.setattr(service, "get_event_detail", ok)
     assert make_client().get("/api/v1/events/9").json()["keywords"] == ["hbm"]
     assert make_client().get("/api/v1/events/abc").status_code == 422
-    monkeypatch.setattr(repository, "get_event_detail", missing)
+    monkeypatch.setattr(service, "get_event_detail", missing)
     assert make_client().get("/api/v1/events/404").status_code == 404
-    monkeypatch.setattr(repository, "get_event_detail", down)
+    monkeypatch.setattr(service, "get_event_detail", down)
     assert make_client().get("/api/v1/events/9").status_code == 503

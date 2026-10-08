@@ -4,8 +4,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from repository import neo4j
 from repository.neo4j.mappers import build_company, build_supply
 from schemas import CompanyNode, NewsGraphResponse, SupplyRelationship
+
+# 확장 상한 — 기업당 이웃 수와 전체 노드 수. 모달의 420px 캔버스에서 읽히는 크기에 맞춘다.
+NEWS_EXPAND_PER_NODE = 8
+NEWS_MAX_NODES = 60
 
 
 @dataclass
@@ -69,3 +74,30 @@ class NewsGraphAccumulator:
             seed_company_ids=list(self.seed_company_ids),
             truncated=self.truncated,
         )
+
+
+async def get_news_graph(news_id: str, hop: int = 1) -> NewsGraphResponse | None:
+    """뉴스 시드 관계에서 시작해 hop-1 단계만큼 기업 간 관계를 따라 펼친다.
+
+    시드 0건이면 None(404). hop ≥ 2 면 단계마다 프론티어 기업의 상위 이웃을 붙이고,
+    마지막에 담긴 기업들 사이의 관계를 보강해 연결이 빠지지 않게 한다.
+    """
+    seeds = await neo4j.fetch_news_seeds(news_id)
+    if not seeds:  # 이 뉴스를 근거로 가진 관계가 없음
+        return None
+
+    acc = NewsGraphAccumulator(max_nodes=NEWS_MAX_NODES)
+    acc.add_seeds(seeds)
+
+    frontier = list(acc.seed_company_ids)
+    for _ in range(hop - 1):
+        if not frontier or acc.truncated:
+            break
+        records = await neo4j.fetch_news_expansion(frontier, NEWS_EXPAND_PER_NODE)
+        frontier = acc.add_expansion(records)
+
+    if hop > 1:
+        records = await neo4j.fetch_news_closure(list(acc.companies))
+        acc.add_closure(records)
+
+    return acc.to_response()
