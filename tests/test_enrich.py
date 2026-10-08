@@ -49,6 +49,7 @@ async def test_fills_company_theme_event_from_postgres(monkeypatch):
 
 
 async def test_missing_rows_leave_quote_none(monkeypatch):
+    # rdb 가 값이 하나도 없는 종목(해외 등)을 걸러 보내므로 enrich 에는 그 종목 행이 없다
     monkeypatch.setattr(enrich, "_query", fake_query({rdb.fetch_stock_quotes: {}}))
     resp = CompanyResponse(companies=[CompanyNode(id="c1", ticker="AAPL")])
     await enrich.enrich_graph(resp)

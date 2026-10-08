@@ -37,7 +37,7 @@ async def _fetch_one(conn: AsyncConnection, query: str, params: Any = None) -> d
 # ── 시세 ────────────────────────────────────────────────────────────────────
 
 # 종목마다 최신 일봉 1행과 최신 밸류에이션 1행. 두 테이블 PK 가 (종목, trade_date) 라 인덱스로 바로 찾는다.
-# 시세가 없는 활성 종목(해외 등)도 행은 나오고 값만 NULL 이다.
+# 시세가 없는 활성 종목(해외 등)도 행은 나오고 값만 NULL 이다 — fetch_stock_quotes 가 걸러 낸다.
 _STOCK_QUOTES_SQL = """
 SELECT s.ticker,
        c.close        AS price,
@@ -108,7 +108,9 @@ async def fetch_stock_quotes(conn: AsyncConnection, tickers: list[str]) -> dict[
     if not tickers:
         return {}
     rows = await _fetch_all(conn, _STOCK_QUOTES_SQL, {"tickers": tickers})
-    return {row.pop("ticker"): row for row in rows}
+    quotes = {row.pop("ticker"): row for row in rows}
+    # 일봉·밸류에이션이 하나도 없는 종목(해외 등)은 값이 전부 NULL 이다 — 시세가 없는 것으로 친다
+    return {ticker: q for ticker, q in quotes.items() if any(v is not None for v in q.values())}
 
 
 async def fetch_theme_quotes(conn: AsyncConnection, theme_ids: list[int]) -> dict[int, dict]:

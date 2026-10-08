@@ -58,3 +58,14 @@ async def test_theme_and_event_skip_query_when_empty():
     assert await rdb.fetch_theme_quotes(conn, []) == {}
     assert await rdb.fetch_event_meta(conn, []) == {}
     assert conn.calls == []
+
+
+async def test_rows_without_any_quote_value_are_dropped():
+    # 활성 종목 중 일봉·밸류에이션이 하나도 없는 행(해외 종목 등)은 값이 전부 NULL 로 온다
+    conn = FakeConn([
+        {"ticker": "AAPL", "price": None, "change": None, "price_date": None,
+         "market_cap": None, "r_1w": None, "r_1m": None, "r_3m": None},
+        {"ticker": "005930", "price": Decimal("1"), "change": None, "price_date": None,
+         "market_cap": None, "r_1w": None, "r_1m": None, "r_3m": None},
+    ])
+    assert set(await rdb.fetch_stock_quotes(conn, ["AAPL", "005930"])) == {"005930"}
