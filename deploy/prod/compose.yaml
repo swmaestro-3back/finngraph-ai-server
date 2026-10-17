@@ -1,0 +1,42 @@
+name: finngraph-ai-server
+
+services:
+  api:
+    image: ${AI_IMAGE:?AI_IMAGE is required}
+    platform: linux/arm64
+    container_name: finngraph-ai-server
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: ai.env
+        required: true
+    environment:
+      TZ: Asia/Seoul
+      LOG_TO_FILE: "false"
+      LOG_LEVEL: INFO
+      LANGSMITH_TRACING: "false"
+      UV_CACHE_DIR: /tmp/uv-cache
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    stop_grace_period: 30s
