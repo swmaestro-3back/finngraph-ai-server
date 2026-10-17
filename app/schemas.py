@@ -1,130 +1,234 @@
-"""
-Pydantic 기반 Type-Safe API Response Schema
-모든 조회 엔드포인트는 GraphResponse 하나로 통일한다.
-"""
-
 from __future__ import annotations
 
-from typing import Any
-
-from neo4j import Record
-from neo4j.graph import Node, Path, Relationship
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-def _to_jsonable(value: Any) -> Any:
-    """
-    neo4j 임시(date/datetime 등) 타입을 ISO 문자열로 변환.
-    나머지는 그대로.
-    """
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, (list, tuple)):
-        return [_to_jsonable(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _to_jsonable(v) for k, v in value.items()}
-    # neo4j.time.Date / DateTime / Time 등은 iso_format()을 가진다.
-    iso = getattr(value, "iso_format", None)
-    if callable(iso):
-        return iso()
-    return str(value)
+class StockQuote(BaseModel):
+    """ETL Postgres 에서 읽은 종목 시세 — 최신 일봉 + 최신 밸류에이션 행."""
+
+    price: float | None = Field(default=None, description="최신 일봉 종가")
+    change: float | None = Field(default=None, description="전일 대비 등락률(%)")
+    market_cap: int | None = None
+    r_1w: float | None = Field(default=None, description="1주 수익률(%)")
+    r_1m: float | None = Field(default=None, description="1개월 수익률(%)")
+    r_3m: float | None = Field(default=None, description="3개월 수익률(%)")
+    price_date: str | None = Field(default=None, description="시세 기준 거래일 (YYYY-MM-DD)")
 
 
-class GraphNode(BaseModel):
-    """
-    그래프 노드 속성은 Label/Type마다 다르기 때문에 properties는 유연한 dict로 설정
-    """
-    id: str = Field(description="Neo4j Element ID")
-    labels: list[str] = Field(description="해당 노드에 붙은 모든 라벨")
-    properties: dict[str, Any] = Field(default_factory=dict)
+class ThemeQuote(BaseModel):
+    """테마 지수(theme_candles_daily) 기준 시세. 시가총액은 소속 종목 최신 시가총액의 합."""
 
-    @classmethod
-    def from_neo4j(cls, node: Node) -> GraphNode:
-        return cls(
-            id=node.element_id,
-            labels=list(node.labels),
-            properties={k: _to_jsonable(v) for k, v in dict(node).items()},
-        )
+    change: float | None = Field(default=None, description="테마 지수 전일 대비 등락률(%)")
+    market_cap: int | None = None
+    r_1w: float | None = None
+    r_1m: float | None = None
+    r_3m: float | None = None
+    price_date: str | None = None
 
 
-class GraphRelationship(BaseModel):
-    """서브그래프에 실리는 '가벼운' 간선. 위상 + 렌더/필터용 스칼라만.
-
-    무거운 provenance(news_ids, source_sentences, mentioned_ats)는 싣지 않는다.
-    간선 클릭 시 GET /relationship/{id}로 RelationshipDetail을 지연 조회한다.
-    """
-
-    id: str = Field(description="Neo4j element_id. 상세 조회 키.")
-    type: str = Field(description="관계 타입")
-    start: str = Field(description="시작 노드 id")
-    end: str = Field(description="끝 노드 id")
-    mention_count: int | None = Field(default=None, description="언급된 뉴스 개수")
-
-    @classmethod
-    def from_neo4j(cls, rel: Relationship) -> GraphRelationship:
-        return cls(
-            id=rel.element_id,
-            type=rel.type,
-            start=rel.start_node.element_id,
-            end=rel.end_node.element_id,
-            mention_count=rel.get("mention_count"),
-        )
-
-
-class GraphResponse(BaseModel):
-    center: str = Field(description="조회 기준 노드의 element_id")
-    nodes: list[GraphNode] = Field(default_factory=list)
-    relationships: list[GraphRelationship] = Field(default_factory=list)
-
-    @classmethod
-    def from_record(cls, record: Record) -> GraphResponse:
-        """center 노드 + collect(path) 결과를 element_id로 dedup 병합한다."""
-        center: Node = record["center"]
-        paths: list[Path] = record["paths"]
-
-        nodes: dict[str, GraphNode] = {center.element_id: GraphNode.from_neo4j(center)}
-        rels: dict[str, GraphRelationship] = {}
-
-        for path in paths:
-            if path is None:  # 이웃이 없으면 OPTIONAL MATCH가 null path를 담는다.
-                continue
-            for n in path.nodes:
-                nodes.setdefault(n.element_id, GraphNode.from_neo4j(n))
-            for r in path.relationships:
-                rels.setdefault(r.element_id, GraphRelationship.from_neo4j(r))
-
-        return cls(
-            center=center.element_id,
-            nodes=list(nodes.values()),
-            relationships=list(rels.values()),
-        )
-
-
-class RelationshipDetail(BaseModel):
-    """간선 클릭 시 지연 조회하는 full provenance."""
+class CompanyNode(BaseModel):
+    model_config = ConfigDict(extra="ignore")   # 선언하지 않은 프로퍼티는 버림
 
     id: str = Field(description="Neo4j element_id")
-    type: str = Field(description="관계 타입")
-    start: str
-    end: str
-    news_ids: list[str] = Field(default_factory=list)
-    source_sentences: list[str] = Field(default_factory=list)
-    mentioned_ats: list[str] = Field(default_factory=list, description="각 근거 저장 날짜 (ISO)")
-    mention_count: int | None = None
+    ticker: str | None = None
+    name: str | None = None
+    market: str | None = Field(default=None, description="KOSPI / KOSDAQ 등 상장 시장")
+    country: str | None = None
+    is_listed: bool | None = None
+    company_id: int | None = None
+    corp_code: str | None = Field(default=None, description="DART 고유번호")
+    krx100: bool = False
+    krx300: bool = False
+    kosdaq150: bool = False
+    quote: StockQuote | None = Field(default=None, description="시세 — 그래프 응답에서 Postgres 로 채운다")
+
+
+class ThemeNode(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(description="Neo4j element_id")
+    name: str | None = None
+    description: str | None = None
+    theme_id: int | None = Field(default=None, description="Postgres themes.id (ETL 이 Theme.theme_id 로 적재)")
+    quote: ThemeQuote | None = None
+
+
+class EventNode(BaseModel):
+    """Neo4j :Event 는 cluster_id·title·기간만 갖는다. 키워드·건수·대표 기사는 Postgres news_clusters 에서 채운다.
+
+    기사 목록과 관련 기업은 GET /events/{cluster_id} 가 따로 돌려준다.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(description="Neo4j element_id")
+    cluster_id: int | None = Field(default=None, description="뉴스 클러스터 id (유니크)")
+    title: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    news_count: int | None = Field(
+        default=None,
+        description="클러스터 전체 기사 수(news_clusters.original_size). member_count 는 승격 상한(3)에 묶여 쓰지 않는다",
+    )
+    representative_news_id: int | None = None
+    first_published_at: str | None = None
+    last_published_at: str | None = None
+
+
+class NewsMention(BaseModel):
+    news_id: str
+    item: str | None = Field(default=None, description="뉴스에서 추출된 품목/근거 문구")
+
+
+class DisclosureMention(BaseModel):
+    rcept_no: str = Field(description="DART 접수번호")
+    item: str | None = Field(default=None, description="공시 항목명")
+
+
+class SupplyRelationship(BaseModel):
+    """뉴스/공시 근거를 갖는 기업 간 관계. SUPPLIES_TO 외에 ACQUIRES, INVESTS_IN 도 같은 속성을 가진다."""
+
+    id: str = Field(description="Neo4j element_id")
+    type: str = Field(description="관계 타입 (SUPPLIES_TO / ACQUIRES / INVESTS_IN)")
+    start: str = Field(description="관계의 시작 기업 노드 id (공급자 / 인수자 / 투자자)")
+    end: str = Field(description="관계의 끝 기업 노드 id")
+
+    news_mention_count: int = Field(default=0, description="근거가 된 뉴스 건수")
+    news: list[NewsMention] = Field(default_factory=list)
+
+    disclosure_count: int = Field(default=0, description="근거가 된 공시 건수")
+    disclosures: list[DisclosureMention] = Field(default_factory=list)
+
     first_mentioned_at: str | None = None
     last_mentioned_at: str | None = None
 
-    @classmethod
-    def from_neo4j(cls, rel: Relationship) -> RelationshipDetail:
-        return cls(
-            id=rel.element_id,
-            type=rel.type,
-            start=rel.start_node.element_id,
-            end=rel.end_node.element_id,
-            news_ids=list(rel.get("news_ids") or []),
-            source_sentences=list(rel.get("source_sentences") or []),
-            mentioned_ats=_to_jsonable(rel.get("mentioned_ats") or []),
-            mention_count=rel.get("mention_count"),
-            first_mentioned_at=_to_jsonable(rel.get("first_mentioned_at")),
-            last_mentioned_at=_to_jsonable(rel.get("last_mentioned_at")),
-        )
+
+class BelongsToRelationship(BaseModel):
+    id: str = Field(description="Neo4j element_id")
+    type: str = Field(default="BELONGS_TO", description="관계 타입")
+    start: str = Field(description="기업 노드 id")
+    end: str = Field(description="테마 노드 id")
+    reason: str | None = Field(default=None, description="해당 테마로 분류된 근거")
+
+
+class HasEventRelationship(BaseModel):
+    id: str = Field(description="Neo4j element_id")
+    type: str = Field(default="HAS_EVENT", description="관계 타입")
+    start: str = Field(description="기업 노드 id")
+    end: str = Field(description="이벤트 노드 id")
+
+
+class SupplyChainResponse(BaseModel):
+    companies: list[CompanyNode] = Field(
+        default_factory=list, description="중심 기업을 포함한 경로상의 모든 기업"
+    )
+    relationships: list[SupplyRelationship] = Field(default_factory=list)
+
+
+class ThemeResponse(BaseModel):
+    theme: ThemeNode
+    companies: list[CompanyNode] = Field(
+        default_factory=list, description="해당 테마에 속한 기업(테마주)"
+    )
+    relationships: list[BelongsToRelationship] = Field(default_factory=list)
+
+
+class CompanyEventsResponse(BaseModel):
+    companies: list[CompanyNode] = Field(
+        default_factory=list, description="중심 기업을 포함한 경로상의 모든 기업"
+    )
+    events: list[EventNode] = Field(default_factory=list, description="경로상의 모든 이벤트")
+    relationships: list[HasEventRelationship] = Field(default_factory=list)
+
+
+class CompanyThemesResponse(BaseModel):
+    company: CompanyNode
+    themes: list[ThemeNode] = Field(default_factory=list, description="해당 기업이 속한 테마")
+    relationships: list[BelongsToRelationship] = Field(default_factory=list)
+
+
+class CompanyResponse(BaseModel):
+    companies: list[CompanyNode] = Field(
+        default_factory=list, description="중심 기업과 1홉 이웃 기업"
+    )
+    events: list[EventNode] = Field(default_factory=list, description="기업이 언급된 이벤트")
+    relationships: list[SupplyRelationship | HasEventRelationship] = Field(
+        default_factory=list,
+        description="중심 기업에 붙은 간선 중 BELONGS_TO 를 제외한 전부. type 으로 구분한다.",
+    )
+
+
+class NewsGraphResponse(BaseModel):
+    """뉴스 한 건을 근거로 추출된 기업 간 관계(시드)와 hop 확장 결과. 테마·이벤트는 담지 않는다."""
+
+    companies: list[CompanyNode] = Field(
+        default_factory=list, description="시드 관계의 양끝 기업과 확장으로 붙은 기업"
+    )
+    relationships: list[SupplyRelationship] = Field(default_factory=list)
+    seed_relationship_ids: list[str] = Field(
+        default_factory=list, description="이 뉴스를 근거로 가진 관계 id — 나머지는 홉 확장으로 딸려온 것"
+    )
+    seed_company_ids: list[str] = Field(
+        default_factory=list, description="시드 관계의 양끝 기업 id — 기사에 등장한 기업"
+    )
+    truncated: bool = Field(
+        default=False, description="전체 노드 상한에 걸려 확장 이웃을 일부 버렸는가"
+    )
+
+
+class NewsBrief(BaseModel):
+    """목록 한 줄에 필요한 만큼의 기사 정보."""
+
+    news_id: str
+    title: str | None = None
+    url: str | None = None
+    original_url: str | None = None
+    published_at: str | None = None
+
+
+class EvidenceNews(NewsBrief):
+    items: list[str] = Field(default_factory=list, description="이 기사에서 뽑힌 품목 문구")
+
+
+class MonthlyCount(BaseModel):
+    month: str = Field(description="YYYY-MM")
+    count: int
+
+
+class EvidenceDisclosure(BaseModel):
+    rcept_no: str
+    report_nm: str | None = None
+    rcept_dt: str | None = None
+    item: str | None = None
+
+
+class RelationshipEvidenceResponse(BaseModel):
+    """간선 근거 — 최신 기사 limit 건, 기사 전체 건수, 전체 기간 월별 건수, 공시."""
+
+    news: list[EvidenceNews] = Field(default_factory=list, description="최신순")
+    news_total: int = Field(default=0, description="Postgres 에 있는 근거 기사 수")
+    monthly: list[MonthlyCount] = Field(default_factory=list, description="오래된 달부터. 빈 달은 없다")
+    disclosures: list[EvidenceDisclosure] = Field(default_factory=list)
+
+
+class EventCompany(BaseModel):
+    name: str
+    ticker: str | None = None
+    quote: StockQuote | None = None
+
+
+class EventDetailResponse(BaseModel):
+    """이벤트(뉴스 클러스터) 상세 — Postgres news_clusters·news·news_companies 에서 읽는다.
+
+    news 는 관계 분석을 거친(triple_extracted IS NOT NULL) 기사만 최신순 limit 건이다.
+    news_total 은 분석 여부와 무관한 클러스터 전체 기사 수다.
+    """
+
+    cluster_id: int
+    title: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    representative_news_id: int | None = None
+    first_published_at: str | None = None
+    last_published_at: str | None = None
+    news: list[NewsBrief] = Field(default_factory=list)
+    news_total: int = 0
+    companies: list[EventCompany] = Field(default_factory=list)

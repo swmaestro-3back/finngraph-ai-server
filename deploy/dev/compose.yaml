@@ -1,0 +1,18 @@
+name: finngraph-ai-server-dev
+services:
+  api:
+    image: ${AI_IMAGE:?AI_IMAGE is required}
+    platform: linux/arm64
+    container_name: finngraph-ai-server
+    env_file: ai.env
+    environment:
+      LOG_TO_FILE: "false"
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

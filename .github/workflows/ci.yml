@@ -1,0 +1,155 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: 의존성 설치
+        run: uv sync --frozen
+
+      - name: 테스트
+        run: uv run pytest -m "not integration"
+
+  deliver:
+    needs: test
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      id-token: write
+    uses: swmaestro-3back/github-actions/.github/workflows/docker.delivery.yaml@main
+    with:
+      image_name: finngraph/ai-server
+    secrets:
+      oidc_role_arn: ${{ secrets.OIDC_ROLE_ARN }}
+
+  deploy:
+    needs: deliver
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: AWS 자격 증명 설정
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+
+      - name: 배포
+        uses: swmaestro-3back/github-actions/actions/ssm-deploy@main
+        with:
+          instance_id: ${{ secrets.DEPLOY_INSTANCE_ID }}
+          compose_dir: /home/ubuntu/finngraph-ai
+          compose_file: compose.yaml
+          compose_source: deploy/dev/compose.yaml
+          service: api
+          image_env_var: AI_IMAGE
+          image_name: finngraph/ai-server
+          image_digest: ${{ needs.deliver.outputs.image_digest }}
+          health_url: http://127.0.0.1:8000/health
+
+  release:
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-24.04-arm
+    environment: prod
+    concurrency:
+      group: release-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: main 포함 여부 확인
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...main" --jq .status)
+          case "$status" in
+            ahead|identical) ;;
+            *) echo "::error::릴리스 커밋이 main 에 없다 ($status)"; exit 1 ;;
+          esac
+
+      - name: AWS 자격 증명 설정
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
+          role-session-name: gha-${{ github.run_id }}-${{ github.run_attempt }}
+          aws-region: ap-northeast-2
+          mask-aws-account-id: true
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+
+      - name: 커밋 태그
+        id: commit
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: 릴리스 태그 추가
+        id: tag
+        uses: swmaestro-3back/github-actions/actions/ecr-tag@main
+        with:
+          image_name: finngraph/ai-server
+          source_tag: ${{ steps.commit.outputs.short_sha }}
+          tags: ${{ github.event.release.tag_name }}
+
+      - name: app-a 배포
+        uses: swmaestro-3back/github-actions/actions/ssm-deploy@main
+        with:
+          instance_id: ${{ secrets.DEPLOY_INSTANCE_ID_A }}
+          compose_dir: /home/ubuntu/finngraph-ai
+          compose_file: compose.yaml
+          compose_source: deploy/prod/compose.yaml
+          env_ssm_prefix: /finngraph/prod/app/ai-server
+          env_file: ai.env
+          env_required_keys: NEO4J_URI NEO4J_USERNAME NEO4J_PASSWORD NEO4J_DATABASE DATABASE_URL PGPASSWORD
+          service: api
+          image_env_var: AI_IMAGE
+          image_name: finngraph/ai-server
+          image_digest: ${{ steps.tag.outputs.image_digest }}
+          health_url: http://127.0.0.1:8000/health
+
+      - name: app-b 배포
+        uses: swmaestro-3back/github-actions/actions/ssm-deploy@main
+        with:
+          instance_id: ${{ secrets.DEPLOY_INSTANCE_ID_B }}
+          compose_dir: /home/ubuntu/finngraph-ai
+          compose_file: compose.yaml
+          compose_source: deploy/prod/compose.yaml
+          env_ssm_prefix: /finngraph/prod/app/ai-server
+          env_file: ai.env
+          env_required_keys: NEO4J_URI NEO4J_USERNAME NEO4J_PASSWORD NEO4J_DATABASE DATABASE_URL PGPASSWORD
+          service: api
+          image_env_var: AI_IMAGE
+          image_name: finngraph/ai-server
+          image_digest: ${{ steps.tag.outputs.image_digest }}
+          health_url: http://127.0.0.1:8000/health
