@@ -6,9 +6,9 @@ from psycopg import AsyncConnection
 
 from .base import fetch_all, fetch_one
 
-# 건수는 original_size(클러스터 전체 기사 수)다 — member_count 는 승격 상한(NEWS_CLUSTER_PROMOTE_SIZE)에 묶인다.
+# 건수는 member_count(클러스터 전체 기사 수)다 — V14 부터 승격 상한에 묶이지 않고 멤버 전체를 센다.
 _EVENT_META_SQL = """
-SELECT id AS cluster_id, keywords, original_size AS news_count, representative_news_id
+SELECT id AS cluster_id, keywords, member_count AS news_count, representative_news_id
 FROM news_clusters
 WHERE id = ANY(%(cluster_ids)s)
 """

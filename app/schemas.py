@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class StockQuote(BaseModel):
-    """ETL Postgres 에서 읽은 종목 시세 — 최신 일봉 + 최신 밸류에이션 행."""
+    """종목 시세"""
 
     price: float | None = Field(default=None, description="최신 일봉 종가")
     change: float | None = Field(default=None, description="전일 대비 등락률(%)")
@@ -16,7 +16,7 @@ class StockQuote(BaseModel):
 
 
 class ThemeQuote(BaseModel):
-    """테마 지수(theme_candles_daily) 기준 시세. 시가총액은 소속 종목 최신 시가총액의 합."""
+    """테마 지수 시세"""
 
     change: float | None = Field(default=None, description="테마 지수 전일 대비 등락률(%)")
     market_cap: int | None = None
@@ -27,6 +27,7 @@ class ThemeQuote(BaseModel):
 
 
 class CompanyNode(BaseModel):
+    """기업 정보"""
     model_config = ConfigDict(extra="ignore")   # 선언하지 않은 프로퍼티는 버림
 
     id: str = Field(description="Neo4j element_id")
@@ -44,6 +45,7 @@ class CompanyNode(BaseModel):
 
 
 class ThemeNode(BaseModel):
+    """테마 정보"""
     model_config = ConfigDict(extra="ignore")
 
     id: str = Field(description="Neo4j element_id")
@@ -54,9 +56,9 @@ class ThemeNode(BaseModel):
 
 
 class EventNode(BaseModel):
-    """Neo4j :Event 는 cluster_id·title·기간만 갖는다. 키워드·건수·대표 기사는 Postgres news_clusters 에서 채운다.
-
-    기사 목록과 관련 기업은 GET /events/{cluster_id} 가 따로 돌려준다.
+    """Neo4j 이벤트 노드 정보
+    - Neo4j는 cluster_id / title / 기간만 보유
+    - Postgres news_cluster에서 키워드 / 건수 / 대표기사를 채움
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -67,7 +69,7 @@ class EventNode(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     news_count: int | None = Field(
         default=None,
-        description="클러스터 전체 기사 수(news_clusters.original_size). member_count 는 승격 상한(3)에 묶여 쓰지 않는다",
+        description="클러스터 전체 기사 수(news_clusters.member_count)",
     )
     representative_news_id: int | None = None
     first_published_at: str | None = None
@@ -75,11 +77,13 @@ class EventNode(BaseModel):
 
 
 class NewsMention(BaseModel):
+    """뉴스 근거"""
     news_id: str
     item: str | None = Field(default=None, description="뉴스에서 추출된 품목/근거 문구")
 
 
 class DisclosureMention(BaseModel):
+    """공시 근거"""
     rcept_no: str = Field(description="DART 접수번호")
     item: str | None = Field(default=None, description="공시 항목명")
 

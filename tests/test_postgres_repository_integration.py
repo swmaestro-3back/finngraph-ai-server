@@ -52,7 +52,7 @@ async def test_event_meta(conn):
     cluster_id = await pick(conn, "SELECT id FROM news_clusters LIMIT 1")
     meta = await postgres.fetch_event_meta(conn, [cluster_id])
     assert isinstance(meta[cluster_id]["keywords"], list)
-    # 패널의 "뉴스 N건" — 승격 상한(3)에 묶인 member_count 가 아니라 클러스터 전체 기사 수다
+    # 패널의 "뉴스 N건" — member_count 는 V14 부터 클러스터 전체 기사 수라 실제 멤버 수와 같아야 한다
     async with conn.cursor() as cur:
         await cur.execute("SELECT count(*) FROM news WHERE cluster_id = %s", (cluster_id,))
         (total,) = await cur.fetchone()
