@@ -1,7 +1,7 @@
 """NewsGraphAccumulator — Neo4j 없이 dict 레코드와 가짜 노드/관계로 검증한다."""
 from __future__ import annotations
 
-from news_graph import NewsGraphAccumulator
+from service.news import NewsGraphAccumulator
 
 
 class FakeNode:

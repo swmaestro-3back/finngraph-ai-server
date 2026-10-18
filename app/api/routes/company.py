@@ -1,8 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
-import repository
+import service
+from api.cache import GRAPH_MAX_AGE, cacheable
 from enums import Market, MarketIndex
 from schemas import (
     CompanyEventsResponse,
@@ -16,21 +17,23 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/companies/{ticker}", response_model=CompanyResponse)
-async def get_company(ticker: str) -> CompanyResponse:
+async def get_company(ticker: str, response: Response) -> CompanyResponse:
     """특정 기업과 1홉 관계에 있는 기업·이벤트 노드와 그 간선을 조회한다.
 
     테마(BELONGS_TO)는 제외하며, 테마는 /companies/{ticker}/themes 로 조회한다.
     """
-    company = await repository.get_company(ticker)
+    company = await service.get_company(ticker)
     if company is None:
         logger.info("Company not found: %s", ticker)
         raise HTTPException(status_code=404, detail=f"Company not found: {ticker}")
+    cacheable(response, GRAPH_MAX_AGE)
     return company
 
 
 @router.get("/companies/{ticker}/supplychain", response_model=SupplyChainResponse)
 async def get_company_supplychain(
     ticker: str,
+    response: Response,
     hop: int = Query(1, ge=1, le=3),
     market: Market | None = Query(None, description="해당 시장에 상장된 기업으로만 경로를 제한한다."),
     index: MarketIndex | None = Query(None, description="해당 지수 구성종목으로만 경로를 제한한다."),
@@ -39,26 +42,29 @@ async def get_company_supplychain(
     if market is not None and index is not None:
         raise HTTPException(status_code=400, detail="market과 index는 함께 사용할 수 없습니다.")
 
-    supplychain = await repository.get_company_supplychain(ticker, hop, market, index)
+    supplychain = await service.get_company_supplychain(ticker, hop, market, index)
     if supplychain is None:
         logger.info("Company not found: %s", ticker)
         raise HTTPException(status_code=404, detail=f"Company not found: {ticker}")
+    cacheable(response, GRAPH_MAX_AGE)
     return supplychain
 
 
 @router.get("/companies/{ticker}/themes", response_model=CompanyThemesResponse)
-async def get_company_themes(ticker: str) -> CompanyThemesResponse:
+async def get_company_themes(ticker: str, response: Response) -> CompanyThemesResponse:
     """특정 기업이 속한 테마와 BELONGS_TO 간선을 조회한다."""
-    themes = await repository.get_company_themes(ticker)
+    themes = await service.get_company_themes(ticker)
     if themes is None:
         logger.info("Company not found: %s", ticker)
         raise HTTPException(status_code=404, detail=f"Company not found: {ticker}")
+    cacheable(response, GRAPH_MAX_AGE)
     return themes
 
 
 @router.get("/companies/{ticker}/events", response_model=CompanyEventsResponse)
 async def get_company_events(
     ticker: str,
+    response: Response,
     hop: int = Query(1, ge=1, le=3),
 ) -> CompanyEventsResponse:
     """특정 기업을 중심으로 hop 이내의 이벤트 서브그래프를 조회한다.
@@ -66,8 +72,9 @@ async def get_company_events(
     HAS_EVENT 간선을 방향 없이 따라가므로 홉마다 기업과 이벤트가 번갈아 나온다.
     hop=1 은 기업의 이벤트, hop=2 는 그 이벤트를 공유하는 다른 기업, hop=3 은 그 기업들의 이벤트까지 포함한다.
     """
-    events = await repository.get_company_events(ticker, hop)
+    events = await service.get_company_events(ticker, hop)
     if events is None:
         logger.info("Company not found: %s", ticker)
         raise HTTPException(status_code=404, detail=f"Company not found: {ticker}")
+    cacheable(response, GRAPH_MAX_AGE)
     return events

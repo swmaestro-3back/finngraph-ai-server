@@ -1,12 +1,12 @@
-"""enrich — rdb 조회를 가짜로 바꿔 id 수집·채우기·실패 격리만 본다."""
+"""enrich — postgres 조회를 가짜로 바꿔 id 수집·채우기·실패 격리만 본다."""
 from __future__ import annotations
 
 import logging
 
-import enrich
-import rdb
-import repository
+from core import neo4j_database
+from repository import postgres
 from schemas import CompanyNode, CompanyResponse, EventNode, ThemeNode, ThemeResponse
+from service import company as company_service, enrich
 
 STOCK = {"price": 263500.0, "change": -1.86, "price_date": "2026-10-08",
          "market_cap": 1, "r_1w": -4.01, "r_1m": None, "r_3m": None}
@@ -27,9 +27,9 @@ def fake_query(results: dict, calls: list | None = None, fail: set | None = None
 async def test_fills_company_theme_event_from_postgres(monkeypatch):
     calls: list = []
     monkeypatch.setattr(enrich, "_query", fake_query({
-        rdb.fetch_stock_quotes: {"005930": STOCK},
-        rdb.fetch_theme_quotes: {1: THEME},
-        rdb.fetch_event_meta: {9: META},
+        postgres.fetch_stock_quotes: {"005930": STOCK},
+        postgres.fetch_theme_quotes: {1: THEME},
+        postgres.fetch_event_meta: {9: META},
     }, calls))
     resp = CompanyResponse(
         companies=[CompanyNode(id="c1", ticker="005930"), CompanyNode(id="c2", ticker=None)],
@@ -49,8 +49,8 @@ async def test_fills_company_theme_event_from_postgres(monkeypatch):
 
 
 async def test_missing_rows_leave_quote_none(monkeypatch):
-    # rdb 가 값이 하나도 없는 종목(해외 등)을 걸러 보내므로 enrich 에는 그 종목 행이 없다
-    monkeypatch.setattr(enrich, "_query", fake_query({rdb.fetch_stock_quotes: {}}))
+    # repository.postgres 가 값이 하나도 없는 종목(해외 등)을 걸러 보내므로 enrich 에는 그 종목 행이 없다
+    monkeypatch.setattr(enrich, "_query", fake_query({postgres.fetch_stock_quotes: {}}))
     resp = CompanyResponse(companies=[CompanyNode(id="c1", ticker="AAPL")])
     await enrich.enrich_graph(resp)
     assert resp.companies[0].quote is None
@@ -58,7 +58,7 @@ async def test_missing_rows_leave_quote_none(monkeypatch):
 
 async def test_one_failed_lookup_does_not_block_others(monkeypatch, caplog):
     monkeypatch.setattr(enrich, "_query", fake_query(
-        {rdb.fetch_event_meta: {9: META}}, fail={rdb.fetch_stock_quotes},
+        {postgres.fetch_event_meta: {9: META}}, fail={postgres.fetch_stock_quotes},
     ))
     resp = CompanyResponse(
         companies=[CompanyNode(id="c1", ticker="005930")], events=[EventNode(id="e1", cluster_id=9)],
@@ -89,10 +89,10 @@ async def test_repository_enriches_company_overview(monkeypatch):
     async def fake_enrich(resp):
         seen.append(resp)
 
-    monkeypatch.setattr(repository.neo4j_database, "execute", execute)
-    monkeypatch.setattr(repository, "enrich_graph", fake_enrich)
+    monkeypatch.setattr(neo4j_database, "execute", execute)
+    monkeypatch.setattr(company_service, "enrich_graph", fake_enrich)
 
-    resp = await repository.get_company("005930")
+    resp = await company_service.get_company("005930")
     assert seen == [resp]
 
 
