@@ -12,7 +12,10 @@ services:
       - "8000:8000"
     restart: unless-stopped
     logging:
-      driver: json-file
+      driver: awslogs
       options:
-        max-size: "10m"
-        max-file: "3"
+        awslogs-region: ap-northeast-2
+        awslogs-group: /finngraph/dev/ai-server
+        tag: "{{.Name}}/{{.ID}}"
+        mode: non-blocking
+        max-buffer-size: 4m
